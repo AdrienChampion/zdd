@@ -104,6 +104,9 @@ enum ZddCache<Label> {
   Offset(Zdd<Label>, Label),
   Onset(Zdd<Label>, Label),
   Change(Zdd<Label>, Label),
+  Union(Zdd<Label>, Zdd<Label>),
+  Inter(Zdd<Label>, Zdd<Label>),
+  Minus(Zdd<Label>, Zdd<Label>),
 }
 
 enum ZddZipperStep<Label> {
@@ -133,6 +136,9 @@ pub struct ZddFactory<Label: Hash + Eq> {
   offset_cache: HashMap<(Zdd<Label>,Label), Zdd<Label>>,
   onset_cache: HashMap<(Zdd<Label>,Label), Zdd<Label>>,
   change_cache: HashMap<(Zdd<Label>,Label), Zdd<Label>>,
+  union_cache: HashMap<(Zdd<Label>,Zdd<Label>), Zdd<Label>>,
+  inter_cache: HashMap<(Zdd<Label>,Zdd<Label>), Zdd<Label>>,
+  minus_cache: HashMap<(Zdd<Label>,Zdd<Label>), Zdd<Label>>,
 }
 
 impl<Label: Hash + Eq + Copy> ZddFactory<Label> {
@@ -146,6 +152,9 @@ impl<Label: Hash + Eq + Copy> ZddFactory<Label> {
       offset_cache: HashMap::new(),
       onset_cache: HashMap::new(),
       change_cache: HashMap::new(),
+      union_cache: HashMap::new(),
+      inter_cache: HashMap::new(),
+      minus_cache: HashMap::new(),
     }
   }
 
@@ -194,6 +203,36 @@ impl<Label: Hash + Eq + Copy> ZddFactory<Label> {
     }
   }
 
+  /// Query the union cache.
+  fn union_get(
+    & self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
+  ) -> Option<Zdd<Label>> {
+    match self.union_cache.get(& (lhs.clone(), rhs.clone())) {
+      None => None,
+      Some(zdd) => Some(zdd.clone()),
+    }
+  }
+
+  /// Query the inter cache.
+  fn inter_get(
+    & self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
+  ) -> Option<Zdd<Label>> {
+    match self.inter_cache.get(& (lhs.clone(), rhs.clone())) {
+      None => None,
+      Some(zdd) => Some(zdd.clone()),
+    }
+  }
+
+  /// Query the minus cache.
+  fn minus_get(
+    & self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
+  ) -> Option<Zdd<Label>> {
+    match self.minus_cache.get(& (lhs.clone(), rhs.clone())) {
+      None => None,
+      Some(zdd) => Some(zdd.clone()),
+    }
+  }
+
   fn cache_insert(
     & mut self, cache: ZddCache<Label>, zdd: & Zdd<Label>
   ) {
@@ -216,6 +255,30 @@ impl<Label: Hash + Eq + Copy> ZddFactory<Label> {
       },
       Change(key1,key2) => {
         match self.change_cache.insert(
+          (key1,key2), zdd.clone()
+        ) {
+          None => (),
+          Some(_) => (),//panic!("cache overwrite"),
+        }
+      },
+      Union(key1,key2) => {
+        match self.union_cache.insert(
+          (key1,key2), zdd.clone()
+        ) {
+          None => (),
+          Some(_) => (),//panic!("cache overwrite"),
+        }
+      },
+      Inter(key1,key2) => {
+        match self.inter_cache.insert(
+          (key1,key2), zdd.clone()
+        ) {
+          None => (),
+          Some(_) => (),//panic!("cache overwrite"),
+        }
+      },
+      Minus(key1,key2) => {
+        match self.minus_cache.insert(
           (key1,key2), zdd.clone()
         ) {
           None => (),

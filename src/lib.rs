@@ -4,6 +4,7 @@ extern crate hashconsing ;
 use std::fmt ;
 use std::cmp::{ PartialEq, Eq } ;
 use std::io ;
+use std::collections::HashMap ;
 
 use hashconsing::* ;
 
@@ -97,17 +98,26 @@ impl<Label: Eq> Eq for ZddTree<Label> {}
 
 use ::ZddZipperStep::* ;
 use ::ZddZipRes::* ;
+use ::ZddCache::* ;
+
+enum ZddCache<Label> {
+  Offset(Zdd<Label>, Label),
+  Onset(Zdd<Label>, Label),
+  Change(Zdd<Label>, Label),
+}
 
 enum ZddZipperStep<Label> {
-  Lft(Label, Zdd<Label>),
-  Rgt(Label, Zdd<Label>),
+  Lft(ZddCache<Label>, Label, Zdd<Label>),
+  Rgt(ZddCache<Label>, Label, Zdd<Label>),
 }
 
 type ZddPath<Label> = Vec<ZddZipperStep<Label>> ;
 
-type ZddZipper<Label> = (Zdd<Label>, ZddPath<Label>) ;
-fn new_zipper<Label>(zdd: & Zdd<Label>) -> ZddZipper<Label> {
-  (zdd.clone(), Vec::new())
+type ZddZipper<Label> = (Zdd<Label>, ZddPath<Label>, ZddCache<Label>) ;
+fn new_zipper_label<Label: Copy>(
+  zdd: & Zdd<Label>, cache: ZddCache<Label>
+) -> ZddZipper<Label> {
+  (zdd.clone(), Vec::new(), cache)
 }
 
 enum ZddZipRes<Label> {
@@ -116,20 +126,26 @@ enum ZddZipRes<Label> {
 
 
 
-pub struct ZddFactory<Label: Hash> {
+pub struct ZddFactory<Label: Hash + Eq> {
   consign: HashConsign<ZddTree<Label>>,
   one: Zdd<Label>,
   zero: Zdd<Label>,
+  offset_cache: HashMap<(Zdd<Label>,Label), Zdd<Label>>,
+  onset_cache: HashMap<(Zdd<Label>,Label), Zdd<Label>>,
+  change_cache: HashMap<(Zdd<Label>,Label), Zdd<Label>>,
 }
 
-impl<Label: Hash> ZddFactory<Label> {
+impl<Label: Hash + Eq + Copy> ZddFactory<Label> {
   /// Creates an empty ZDD factory.
   pub fn mk() -> Self {
     let mut consign = HashConsign::empty() ;
     let one = consign.mk(One) ;
     let zero = consign.mk(Zero) ;
     ZddFactory {
-      consign: consign, one: one, zero: zero
+      consign: consign, one: one, zero: zero,
+      offset_cache: HashMap::new(),
+      onset_cache: HashMap::new(),
+      change_cache: HashMap::new(),
     }
   }
 
@@ -148,21 +164,83 @@ impl<Label: Hash> ZddFactory<Label> {
   /// The `0` node.
   pub fn zero(& self) -> Zdd<Label> { self.zero.clone() }
 
+  /// Query the offset cache.
+  fn offset_get(
+    & self, zdd: & Zdd<Label>, lbl: & Label
+  ) -> Option<Zdd<Label>> {
+    match self.offset_cache.get(& (zdd.clone(), *lbl)) {
+      None => None,
+      Some(zdd) => Some(zdd.clone()),
+    }
+  }
+
+  /// Query the onset cache.
+  fn onset_get(
+    & self, zdd: & Zdd<Label>, lbl: & Label
+  ) -> Option<Zdd<Label>> {
+    match self.onset_cache.get(& (zdd.clone(), *lbl)) {
+      None => None,
+      Some(zdd) => Some(zdd.clone()),
+    }
+  }
+
+  /// Query the change cache.
+  fn change_get(
+    & self, zdd: & Zdd<Label>, lbl: & Label
+  ) -> Option<Zdd<Label>> {
+    match self.change_cache.get(& (zdd.clone(), *lbl)) {
+      None => None,
+      Some(zdd) => Some(zdd.clone()),
+    }
+  }
+
+  fn cache_insert(
+    & mut self, cache: ZddCache<Label>, zdd: & Zdd<Label>
+  ) {
+    match cache {
+      Offset(key1,key2) => {
+        match self.offset_cache.insert(
+          (key1,key2), zdd.clone()
+        ) {
+          None => (),
+          Some(_) => panic!("cache overwrite"),
+        }
+      },
+      Onset(key1,key2) => {
+        match self.onset_cache.insert(
+          (key1,key2), zdd.clone()
+        ) {
+          None => (),
+          Some(_) => (),//panic!("cache overwrite"),
+        }
+      },
+      Change(key1,key2) => {
+        match self.change_cache.insert(
+          (key1,key2), zdd.clone()
+        ) {
+          None => (),
+          Some(_) => (),//panic!("cache overwrite"),
+        }
+      },
+    }
+  }
+
   /// *Zipper function.* Goes up as long as it's in the right branch.
   fn up_of_path(
     & mut self, zip: ZddZipper<Label>
   ) -> ZddZipRes<Label> {
-    let (mut zdd, mut path) = zip ;
+    let (mut zdd, mut path, cache) = zip ;
     loop {
       match path.pop() {
         None => return Done(zdd),
-        Some(Lft(lbl, rgt)) => {
-          path.push( Rgt(lbl,zdd) ) ;
-          return Mada((rgt, path))
+        Some(Lft(key, lbl, rgt)) => {
+          path.push( Rgt(key, lbl, zdd) ) ;
+          return Mada((rgt, path, cache))
         },
-        Some(Rgt(lbl, lft)) => {
+        Some(Rgt(key, lbl, lft)) => {
           zdd = self.node(lbl, lft, zdd) ;
-        }
+          self.cache_insert(key, & zdd)
+        },
       }
     }
   }
@@ -194,86 +272,85 @@ pub trait ZddOps<Label> {
 // |===| Zipper macros.
 
 macro_rules! return_if_done {
-  ( $slf:ident ^ $zdd:expr, $path:expr ) => (
-    match $slf.up_of_path(($zdd, $path)) {
+  ( $slf:ident ^ $zdd:expr, $zip:expr ) => (
+    match $slf.up_of_path(($zdd.clone(), $zip.1, $zip.2)) {
       Done(zdd) => return zdd,
       Mada(zip) => zip,
     }
   ) ;
 }
 
-macro_rules! zdd_fold_pattern {
-  (
-    Node($top:ident, $left:ident, $right:ident) => {
-      if equal $equal_block:block,
-      if below $below_block:block,
-      if above $above_block:block,
-    }
+macro_rules! zdd_match_height {
+  ($top:expr,
+    above $lbl:expr => $abv_b:block,
+    equal => $eql_b:block,
+    below => $blw_b:block
   ) => (
-    & Node(ref $top, ref $left, ref $right) =>
-      if $lbl == $top $equal_block else {
-        if $lbl < $top $below_block else $above_block
+    if $top < $lbl $abv_b else { if $top == $lbl $eql_b else $blw_b }
+  ) ;
+}
+
+macro_rules! zdd_fold_better {
+  // Entry point.
+  (zipper $zip:expr, {
+    Node($top:ident, $left:ident, $right:ident) => $n_b:block,
+    $( $pat:pat => $b:block ),+
+  }) => (
+    loop {
+      $zip = match $zip.0.get() {
+        & Node(ref $top, ref $left, ref $right) => $n_b,
+        $( & $pat => $b ),+
       }
-  ) ;
-  (One => $b:block) => (
-    & One => $b
-  ) ;
-  (Zero => $b:block) => (
-    & Zero => $b
-  ) ;
-  (_ => $b:block) => (
-    _ => $b
+    }
   ) ;
 }
 
 macro_rules! zdd_fold {
-  // (zipper $zip:ident, label $lbl:ident {
-  //   $( $pat:pat => $b:block ),+
-  // }) => (
-  //   loop {
-  //     $zip = match $zip.0.get() {
-  //       $( zdd_fold_pattern!( $pat => $b:block ) ),+
-  //     }
-  //   }
-  // ) ;
-  (zipper $zip:ident, label $lbl:ident {
+  // Entry point.
+  (zipper $zip:ident, label $lbl:expr, {
     Node($top:ident, $left:ident, $right:ident) => {
-      if equal $equal_block:block,
-      if below $below_block:block,
-      if above $above_block:block,
+      $( $sub_pat:tt => $sub_b:block ),+
     },
-    One => $one_block:block,
-    Zero => $zero_block:block,
+    $( $pat:pat => $b:block ),+
+  }) => (
+    zdd_fold!(
+      zipper $zip, label $lbl, {
+        Node($top, $left, $right) => {
+          do {()},
+          $( $sub_pat => $sub_b ),+
+        },
+        $( $pat => $b ),+
+      }
+    )
+  ) ;
+  // Entry point.
+  (zipper $zip:ident, label $lbl:expr, {
+    Node($top:ident, $left:ident, $right:ident) => {
+      $( do $to_do:block ),+ ,
+      $( $sub_pat:tt => $sub_b:block ),+
+    },
+    $( $pat:pat => $b:block ),+
   }) => (
     loop {
       $zip = match $zip.0.get() {
-        & Node(ref $top, ref $left, ref $right) =>
-          if $lbl == $top $equal_block else {
-            if $lbl < $top $below_block else $above_block
-          },
-        & One => $one_block,
-        & Zero => $zero_block,
+        & Node(ref $top, ref $left, ref $right) => {
+          $( $to_do );+ ;
+          match (
+            $lbl == $top, $lbl > $top
+          ) {
+            $( zdd_fold!(lbl $sub_pat) => $sub_b ),+
+          }
+        }
+        $( & $pat => $b ),+
       }
     }
   ) ;
-  (zipper $zip:ident, label $lbl:ident {
-    Node($top:ident, $left:ident, $right:ident) => {
-      if equal $equal_block:block,
-      if below $below_block:block,
-      if above $above_block:block,
-    },
-    _ => $leaf_block:block,
-  }) => (
-    loop {
-      $zip = match $zip.0.get() {
-        & Node(ref $top, ref $left, ref $right) =>
-          if $lbl == $top $equal_block else {
-            if $lbl < $top $below_block else $above_block
-          },
-        _ => $leaf_block,
-      }
-    }
-  ) ;
+
+  // Equal, above, below, wildcard.
+  (lbl equal) => ((true,_)) ;
+  (lbl below) => ((false,false)) ;
+  (lbl above) => ((false,true)) ;
+  (lbl _) => (_)
 }
 
 impl<Label: Hash + Ord + Eq + Copy + fmt::Display> ZddOps<Label> for ZddFactory<Label> {
@@ -283,89 +360,112 @@ impl<Label: Hash + Ord + Eq + Copy + fmt::Display> ZddOps<Label> for ZddFactory<
     }
   }
 
-  // TODO: make this cached.
   fn offset(& mut self, zdd: & Zdd<Label>, lbl: & Label) -> Zdd<Label> {
-    // Preparing zipper.
-    let mut zip = new_zipper(zdd) ;
-    zdd_fold! {
-      zipper zip, label lbl {
+    let mut zip = new_zipper_label(zdd, Offset(zdd.clone(), *lbl)) ;
+    zdd_fold_better! {
+      zipper zip, {
         Node(top, left, right) => {
-          if equal {
-            // Only keep left part and go up.
-            return_if_done!(self ^ left.clone(), zip.1)
-          }, if below {
-            // We're below the label, going up.
-            return_if_done!(self ^ zip.0.clone(), zip.1)
-          }, if above {
-            // We're above the label, going left first and updating path.
-            zip.1.push( Lft(* top, right.clone()) ) ;
-            (left.clone(), zip.1)
-          },
+          match self.offset_get(& zip.0, lbl) {
+            Some(res) => return_if_done!(self ^ res, zip),
+            None => zdd_match_height!(top,
+              above lbl => {
+                // We're above the label, going left first and updating path.
+                zip.1.push(
+                  Lft(Offset(zip.0.clone(), *lbl), * top, right.clone())
+                ) ;
+                (left.clone(), zip.1, zip.2)
+              },
+              equal => {
+                // Only keep left part and go up.
+                return_if_done!(self ^ left, zip)
+              },
+              below => {
+                // We're below the label, going up.
+                return_if_done!(self ^ zip.0, zip)
+              }
+            ),
+          }
         },
         _ => {
           let zero = self.zero() ;
-          return_if_done!(self ^ zero, zip.1)
-        },
+          return_if_done!(self ^ zero, zip)
+        }
       }
     }
   }
 
-  // TODO: make this cached.
   fn onset(& mut self, zdd: & Zdd<Label>, lbl: & Label) -> Zdd<Label> {
-    // Preparing zipper.
-    let mut zip = new_zipper(zdd) ;
-    zdd_fold! {
-      zipper zip, label lbl {
+    let mut zip = new_zipper_label(zdd, Onset(zdd.clone(), *lbl)) ;
+    zdd_fold_better! {
+      zipper zip, {
         Node(top, left, right) => {
-          if equal {
-            // Only keep right part and go up.
-            return_if_done!(self ^ right.clone(), zip.1)
-          }, if below {
-            // We're below the label, it's not there.
-            let zero = self.zero() ;
-            return_if_done!(self ^ zero, zip.1)
-          }, if above {
-            // We're above the label, going left first and updating path.
-            zip.1.push( Lft(* top, right.clone()) ) ;
-            (left.clone(), zip.1)
-          },
+          match self.onset_get(& zip.0, lbl) {
+            Some(res) => return_if_done!(self ^ res, zip),
+            None => zdd_match_height!(top,
+              above lbl => {
+                // We're above the label, going left first and updating path.
+                zip.1.push(
+                  Lft(Onset(zip.0.clone(), *lbl), * top, right.clone())
+                ) ;
+                (left.clone(), zip.1, zip.2)
+              },
+              equal => {
+                // println!("equal") ;
+                // right.get().print("right | ".to_string()) ;
+                // Only keep right part and go up.
+                return_if_done!(self ^ right, zip)
+              },
+              below => {
+                // We're below the label, it's not there.
+                let zero = self.zero() ;
+                return_if_done!(self ^ zero, zip)
+              }
+            ),
+          }
         },
         _ => {
           let zero = self.zero() ;
-          return_if_done!(self ^ zero, zip.1)
-        },
+          return_if_done!(self ^ zero, zip)
+        }
       }
     }
   }
 
-  // TODO: make this cached.
   fn change(& mut self, zdd: & Zdd<Label>, lbl: & Label) -> Zdd<Label> {
-    // Preparing zipper.
-    let mut zip = new_zipper(zdd) ;
-    zdd_fold! {
-      zipper zip, label lbl {
+    let mut zip = new_zipper_label(zdd, Change(zdd.clone(), *lbl)) ;
+    zdd_fold_better! {
+      zipper zip, {
         Node(top, left, right) => {
-          if equal {
-            // Change and go up.
-            let zdd = self.node(* top, right.clone(), left.clone()) ;
-            return_if_done!(self ^ zdd, zip.1)
-          }, if below {
-            // We're below the label, it's not there.
-            return_if_done!(self ^ zip.0.clone(), zip.1)
-          }, if above {
-            // We're above the label, going left first and updating path.
-            zip.1.push( Lft(* top, right.clone()) ) ;
-            (left.clone(), zip.1)
-          },
+          match self.change_get(& zip.0, lbl) {
+            Some(res) => return_if_done!(self ^ res, zip),
+            None => zdd_match_height!(top,
+              above lbl => {
+                // We're above the label, going left first and updating path.
+                zip.1.push(
+                  Lft(Change(zip.0.clone(), *lbl), * top, right.clone())
+                ) ;
+                (left.clone(), zip.1, zip.2)
+              },
+              equal => {
+                // Change and go up.
+                let zdd = self.node(* top, right.clone(), left.clone()) ;
+                return_if_done!(self ^ zdd, zip)
+              },
+              below => {
+                // We're below the label, it's not there.
+                return_if_done!(self ^ zip.0, zip)
+              }
+            ),
+          }
         },
         One => {
           let zero = self.zero() ;
-          let zdd = self.node(* lbl, zero, zip.0.clone()) ;
-          return_if_done!(self ^ zdd, zip.1)
+          let nu_zdd = self.node(* lbl, zero, zip.0.clone()) ;
+          return_if_done!(self ^ nu_zdd, zip)
         },
         Zero => {
-          return_if_done!(self ^ zip.0.clone(), zip.1)
-        },
+          return_if_done!(self ^ zip.0, zip)
+        }
       }
     }
   }
@@ -520,12 +620,17 @@ pub fn run() {
   let zdd9 = factory.offset(& zdd4, & "a") ;
   print_and_wtf(& zdd9, 9, "offset_4_a", dir) ;
 
+  let zdd9 = factory.offset(& zdd4, & "a") ;
+  print_and_wtf(& zdd9, 9, "offset_4_a", dir) ;
+
   let zdd10 = factory.change(& zdd4, & "c") ;
   print_and_wtf(& zdd10, 10, "change_4_c", dir) ;
 
   let zdd11 = factory.offset(& zdd10, & "b") ;
   print_and_wtf(& zdd11, 11, "offset_10_b", dir) ;
 
+  let zdd11 = factory.offset(& zdd10, & "b") ;
+  print_and_wtf(& zdd11, 11, "offset_10_b", dir) ;
   println!("Done.\n") ;
 
   ()

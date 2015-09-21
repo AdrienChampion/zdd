@@ -17,6 +17,38 @@ use zip::UnaryZip ;
 use zip::BinaryZip ;
 
 
+macro_rules! return_if_done {
+  ($slf:ident ^ bin $zdd:expr, $zip:expr) => (
+    return_if_done!($slf ^ binary_zip $zdd, $zip)
+  ) ;
+  ($slf:ident ^ un $zdd:expr, $zip:expr) => (
+    return_if_done!($slf ^ unary_zip $zdd, $zip)
+  ) ;
+  ($slf:ident ^ $fun:ident $zdd:expr, $zip:expr) => (
+    match $slf.$fun($zdd, & mut $zip) {
+      Done(zdd) => return zdd,
+      NYet(data) => data,
+    }
+  ) ;
+}
+
+macro_rules! zdd_match_height {
+  ($top:expr,
+    above $lbl:expr => $abv_b:block,
+    equal => $eql_b:block,
+    below => $blw_b:block,
+  ) => (
+    if $top < $lbl $abv_b else { if $top == $lbl $eql_b else $blw_b }
+  ) ;
+  ($top:expr,
+    above $lbl:expr => $abv_b:block,
+    equal => $eql_b:block,
+    below => $blw_b:block
+  ) => (
+    if $top < $lbl $abv_b else { if $top == $lbl $eql_b else $blw_b }
+  ) ;
+}
+
 
 pub struct Factory<Label: Eq + Hash> {
   consign: HashConsign<ZddTree<Label>>,
@@ -35,7 +67,7 @@ pub struct Factory<Label: Eq + Hash> {
   count_cache: HashMap<UnaryKey<usize>, Zdd<Label>>,
 }
 
-impl<Label: Eq + Hash + Copy> Factory<Label> {
+impl<Label: Ord + Eq + Hash + Copy> Factory<Label> {
   pub fn mk() -> Self {
     let mut consign = HashConsign::empty() ;
     let one = consign.mk(One) ;
@@ -193,64 +225,10 @@ impl<Label: Eq + Hash + Copy> Factory<Label> {
       }
     }
   }
-}
 
-macro_rules! return_if_done {
-  ($slf:ident ^ bin $zdd:expr, $zip:expr) => (
-    return_if_done!($slf ^ binary_zip $zdd, $zip)
-  ) ;
-  ($slf:ident ^ un $zdd:expr, $zip:expr) => (
-    return_if_done!($slf ^ unary_zip $zdd, $zip)
-  ) ;
-  ($slf:ident ^ $fun:ident $zdd:expr, $zip:expr) => (
-    match $slf.$fun($zdd, & mut $zip) {
-      Done(zdd) => return zdd,
-      NYet(data) => data,
-    }
-  ) ;
-}
-
-macro_rules! zdd_match_height {
-  ($top:expr,
-    above $lbl:expr => $abv_b:block,
-    equal => $eql_b:block,
-    below => $blw_b:block,
-  ) => (
-    if $top < $lbl $abv_b else { if $top == $lbl $eql_b else $blw_b }
-  ) ;
-  ($top:expr,
-    above $lbl:expr => $abv_b:block,
-    equal => $eql_b:block,
-    below => $blw_b:block
-  ) => (
-    if $top < $lbl $abv_b else { if $top == $lbl $eql_b else $blw_b }
-  ) ;
-}
-
-pub trait ZddOps<Label> {
-  // |===| Operations on ZDDs.
-
-  /// Selects the subset of combinations not containing a label.
-  fn offset(& mut self, & Zdd<Label>, & Label) -> Zdd<Label> ;
-  /// Selects the subset of combinations containing a label, removing it from
-  /// them.
-  fn onset(& mut self, & Zdd<Label>, & Label) -> Zdd<Label> ;
-  /// Inverts a label on each combination.
-  fn change(& mut self, & Zdd<Label>, & Label) -> Zdd<Label> ;
-  /// The union of two ZDDs.
-  fn union(& mut self, & Zdd<Label>, & Zdd<Label>) -> Zdd<Label> ;
-  /// The intersection of two ZDDs.
-  fn inter(& mut self, & Zdd<Label>, & Zdd<Label>) -> Zdd<Label> ;
-  /// The difference of two ZDDs.
-  fn minus(& mut self, & Zdd<Label>, & Zdd<Label>) -> Zdd<Label> ;
-  /// The number of combinations in a ZDD.
-  fn count(& mut self, & Zdd<Label>) -> usize ;
-}
-
-
-impl<Label: Ord + Eq + Hash + Copy> ZddOps<Label> for Factory<Label> {
-
-  fn offset(& mut self, zdd: & Zdd<Label>, lbl: & Label) -> Zdd<Label> {
+  pub fn offset(
+    & mut self, zdd: & Zdd<Label>, lbl: & Label
+  ) -> Zdd<Label> {
     use zip::UnaryStep::* ;
     let mut zip = UnaryZip::mk(lbl) ;
     let mut zdd = zdd.clone() ;
@@ -290,7 +268,9 @@ impl<Label: Ord + Eq + Hash + Copy> ZddOps<Label> for Factory<Label> {
     }
   }
 
-  fn onset(& mut self, zdd: & Zdd<Label>, lbl: & Label) -> Zdd<Label> {
+  pub fn onset(
+    & mut self, zdd: & Zdd<Label>, lbl: & Label
+  ) -> Zdd<Label> {
     use zip::UnaryStep::* ;
     let mut zip = UnaryZip::mk(lbl) ;
     let mut zdd = zdd.clone() ;
@@ -331,7 +311,9 @@ impl<Label: Ord + Eq + Hash + Copy> ZddOps<Label> for Factory<Label> {
     }
   }
 
-  fn change(& mut self, zdd: & Zdd<Label>, lbl: & Label) -> Zdd<Label> {
+  pub fn change(
+    & mut self, zdd: & Zdd<Label>, lbl: & Label
+  ) -> Zdd<Label> {
     use zip::UnaryStep::* ;
     let mut zip = UnaryZip::mk(lbl) ;
     let mut zdd = zdd.clone() ;
@@ -379,7 +361,9 @@ impl<Label: Ord + Eq + Hash + Copy> ZddOps<Label> for Factory<Label> {
   }
 
 
-  fn union(& mut self, lhs: & Zdd<Label>, rhs: & Zdd<Label>) -> Zdd<Label> {
+  pub fn union(
+    & mut self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
+  ) -> Zdd<Label> {
     use zip::BinaryStep::* ;
     if lhs == rhs { return lhs.clone() } ;
     let mut zip = BinaryZip::mk() ;
@@ -439,7 +423,9 @@ impl<Label: Ord + Eq + Hash + Copy> ZddOps<Label> for Factory<Label> {
   }
 
 
-  fn inter(& mut self, lhs: & Zdd<Label>, rhs: & Zdd<Label>) -> Zdd<Label> {
+  pub fn inter(
+    & mut self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
+  ) -> Zdd<Label> {
     use zip::BinaryStep::* ;
     if lhs == rhs { return lhs.clone() } ;
     let mut zip = BinaryZip::mk() ;
@@ -497,7 +483,9 @@ impl<Label: Ord + Eq + Hash + Copy> ZddOps<Label> for Factory<Label> {
   }
 
 
-  fn minus(& mut self, lhs: & Zdd<Label>, rhs: & Zdd<Label>) -> Zdd<Label> {
+  pub fn minus(
+    & mut self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
+  ) -> Zdd<Label> {
     use zip::BinaryStep::* ;
     if lhs == rhs { return lhs.clone() } ;
     let mut zip = BinaryZip::mk() ;
@@ -560,7 +548,7 @@ impl<Label: Ord + Eq + Hash + Copy> ZddOps<Label> for Factory<Label> {
   }
 
   // TODO: Make this cached.
-  fn count(& mut self, zdd: & Zdd<Label>) -> usize {
+  pub fn count(& mut self, zdd: & Zdd<Label>) -> usize {
     if self.is_zero(zdd) { return 0 } ;
     if self.is_one(zdd) { return 1 } ;
     let mut to_visit = vec![ zdd.clone() ] ;

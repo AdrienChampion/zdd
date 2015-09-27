@@ -9,26 +9,13 @@ fn print_and_wtf(
   println!("----------------------------") ;
   println!("\n> [{:>3}] {}", id, name) ;
   zdd.print("".to_string()) ;
-  println!("to_set = {{") ;
-  for set in zdd.to_set().into_iter() {
-    print!("  {{ ") ;
-    let mut first = true ;
-    for e in set.into_iter() {
-      print!("{}{}",
-        if first { first = false ; "" } else { ", " },
-        e
-      )
-    } ;
-    println!(" }}")
-  } ;
-  println!("}}") ;
   println!("----------------------------") ;
-  zdd.graph_to_file(& format!("{}/g_{:0>3}_{}", dir, id, name)) ;
+  zdd.graph_to_file(& format!("{}/g_{:0>3}_{}", dir, id, name)).unwrap() ;
 }
 
 pub fn run() {
   use std::process::Command ;
-  let dir = "./graphs" ;
+  let dir = "./graphs_1" ;
 
   // Creating graph directory.
   let _ = Command::new("mkdir").arg("-p").arg(dir).output().unwrap() ;
@@ -72,9 +59,6 @@ pub fn run() {
 
   let zdd11 = factory.offset(& zdd10, & "b") ;
   print_and_wtf(& zdd11, 11, "offset_10_b", dir) ;
-
-  let zdd11 = factory.offset(& zdd10, & "b") ;
-  print_and_wtf(& zdd11, 11, "offset_10_b", dir) ;
   println!("Done.\n") ;
 
   ()
@@ -83,7 +67,7 @@ pub fn run() {
 
 pub fn run2() {
   use std::process::Command ;
-  let dir = "./graphs" ;
+  let dir = "./graphs_2" ;
 
   // Creating graph directory.
   let _ = Command::new("mkdir").arg("-p").arg(dir).output().unwrap() ;
@@ -91,12 +75,11 @@ pub fn run2() {
   println!("\nCreating factory.") ;
   let mut factory = Factory::<& 'static str>::mk() ;
   let one = factory.one() ;
-  let zero = factory.zero() ;
 
-  let zdd1 = factory.node("a", zero.clone(), one.clone()) ;
+  let zdd1 = factory.change(& one, & "a") ;
   print_and_wtf(& zdd1, 1, "a", dir) ;
 
-  let zdd2 = factory.node("b", zero.clone(), one.clone()) ;
+  let zdd2 = factory.change(& one, & "b") ;
   print_and_wtf(& zdd2, 2, "b", dir) ;
 
   let zdd3 = factory.union(& zdd1, & zdd2) ;
@@ -138,8 +121,12 @@ pub fn run2() {
   let zdd15 = factory.minus(& zdd1, & zdd4) ;
   print_and_wtf(& zdd15, 15, "1_minus_4", dir) ;
 
+  let zdd16 = factory.inter(& zdd11, & zdd10) ;
+  print_and_wtf(& zdd16, 16, "11_inter_10", dir) ;
+
   println!("count 1: {}", factory.count(& zdd1)) ;
   println!("count 4: {}", factory.count(& zdd4)) ;
+  println!("count 11: {}", factory.count(& zdd11)) ;
   println!("count 11: {}", factory.count(& zdd11)) ;
 
   ()
@@ -147,5 +134,7 @@ pub fn run2() {
 }
 
 fn main() {
-  run()
+  run() ;
+  run2() ;
+  ()
 }

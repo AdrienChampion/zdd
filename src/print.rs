@@ -3,82 +3,115 @@
 use std::fmt ;
 use std::io ;
 
-use ::{ Zdd, ZddTree, ZddTreeOps } ;
+use ::{ Zdd, ZddTreeOps } ;
 use ::ZddTree::* ;
 
 /// Printing-related stuff for ZDDs.
-pub trait ZddTreePrint<Label> {
+pub trait ZddPrint<Label> {
   /// Pretty prints a ZDD with a prefix.
   fn print(& self, String) ;
 
-  /// Prints a ZDD as a graphviz graph to a `Write`.
-  fn graph_print(& self, & mut io::Write) -> io::Result<()> ;
-
   /// Print a ZDD as a graphviz graph to a file.
-  fn graph_to_file(& self, & str) ;
+  fn graph_to_file(& self, & str) -> io::Result<()> ;
 }
 
-impl<Label: fmt::Display + Ord + Copy> ZddTreePrint<Label> for Zdd<Label> {
-  fn print(& self, pref: String) { self.get().print(pref) }
-  fn graph_print(& self, fmt: & mut io::Write) -> io::Result<()> {
-    self.get().graph_print(fmt)
+/// Prints a ZDD as a graphviz graph to a `Write`.
+fn graph_print<Label: fmt::Display + Ord + Copy>(
+  zdd: & Zdd<Label>, fmt: & mut io::Write, root: & 'static str
+) -> io::Result<()> {
+  use std::collections::HashSet ;
+  let mut mem = HashSet::new() ;
+
+  let mut to_do = vec![ (root.to_string(), "", false, zdd.clone()) ] ;
+  let has_one_style= " arrowtail=odot  dir=both" ;
+
+  loop {
+    if let Some((parent, edge_lbl, has_one, zdd)) = to_do.pop() {
+      let style = if has_one { has_one_style } else { "" } ;
+      match zdd.get() {
+        & Zero => try!(
+          write!(
+            fmt, "  {} -> 0 [{}{}] ;\n", parent, edge_lbl, style
+          )
+        ),
+        & HasOne(ref kid) => to_do.push(
+          (parent, edge_lbl, true, kid.clone())
+        ),
+        & Node(ref lbl, ref left, ref right) => {
+          try!(
+            write!(
+              fmt, "  {} -> {} [{}{}] ;\n",
+              parent, lbl, edge_lbl, style
+            )
+          ) ;
+          if ! mem.contains(& zdd) {
+            mem.insert(zdd.clone()) ;
+            to_do.push(
+              (format!("{}", lbl), "arrowhead=empty", false, right.clone())
+            ) ;
+            to_do.push(
+              (format!("{}", lbl), "", false, left.clone())
+            )
+          }
+        },
+      }
+    } else {
+      return Ok(())
+    }
   }
-  fn graph_to_file(& self, file: & str) { self.get().graph_to_file(file) }
 }
 
-impl<Label: fmt::Display + Ord + Copy> ZddTreePrint<Label> for ZddTree<Label> {
+impl<Label: fmt::Display + Ord + Copy> ZddPrint<Label> for Zdd<Label> {
 
   fn print(& self, pref: String) {
-    match * self {
-      Node(ref lbl, ref left, ref right) => {
-        println!("{}{}", pref, lbl) ;
-        left.get().print(format!("{}  ", pref)) ;
-        right.get().print(format!("{}  ", pref))
-      },
-      One => println!("{}1", pref),
-      Zero => println!("{}0", pref),
-    }
+    println!("{}{{", pref) ;
+    for set in self.to_set().into_iter() {
+      print!("{}  {{ ", pref) ;
+      let mut first = true ;
+      for e in set.into_iter() {
+        print!(
+          "{}{}", if first { first = false ; "" } else { ", " }, e
+        )
+      } ;
+      println!(" }}") ;
+    } ;
+    println!("{}}}", pref)
   }
 
-  fn graph_print<>(& self, fmt: & mut io::Write) -> io::Result<()> {
-    match * self {
-      Zero => write!(fmt, "  0;\n"),
-      One => write!(fmt, "  1;\n"),
-      Node(ref lbl, ref left, ref right) => {
-        try!( write!(fmt, "  {} -> ", lbl, ) ) ;
-        match left.top() {
-          Err(false) => try!( write!(fmt, "0") ),
-          Err(true) => try!( write!(fmt, "1") ),
-          Ok(lbl) => try!( write!(fmt, "{}", lbl) ),
-        } ;
-        try!( write!(fmt, " [label=\"0\"] ;\n") ) ;
-        try!( write!(fmt, "  {} -> ", lbl, ) ) ;
-        match right.top() {
-          Err(false) => try!( write!(fmt, "0") ),
-          Err(true) => try!( write!(fmt, "1") ),
-          Ok(lbl) => try!( write!(fmt, "{}", lbl) ),
-        } ;
-        try!( write!(fmt, " [label=\"1\"] ;\n") ) ;
-        try!( left.get().graph_print(fmt) ) ;
-        right.get().graph_print(fmt)
-      },
-    }
-  }
-
-  fn graph_to_file(& self, file: & str) {
+  fn graph_to_file(& self, file: & str) -> io::Result<()> {
     use std::fs::{ OpenOptions } ;
     use std::io::Write ;
     use std::process::Command ;
+    let root = "root" ;
     match OpenOptions::new().write(true).create(true).open(
       format!("{}.gv", file)
     ) {
       Ok(mut f) => {
         let fmt = & mut f ;
-        write!(fmt, "digraph {{\n").unwrap() ;
-        self.graph_print(fmt).unwrap() ;
-        write!(fmt, "}}\n").unwrap() ;
-        fmt.flush().unwrap() ;
-        ()
+        try!( write!(fmt, "digraph {{\n\n") ) ;
+        try!( write!(fmt, "  graph [bgcolor=black margin=0.0] ;\n") ) ;
+        try!( write!(fmt, "  node [style=invisible] ; {} ;\n\n", root) ) ;
+        try!( write!(fmt,
+          "  node [\
+              style=filled \
+              fillcolor=black \
+              fontcolor=\"#1e90ff\" \
+              color=\"#666666\"\
+          ] ;\n"
+        ) ) ;
+        try!( write!(fmt,
+          "  edge [color=\"#1e90ff\" fontcolor=\"#222222\"] ;\n\n"
+        ) ) ;
+// graph [bgcolor=black]
+// node [fillcolor=white style=filled]
+// edge [color=white]
+        try!( write!(fmt,
+          "  node [shape=doublecircle] ; 0 ;\n"
+        ) ) ;
+        try!( write!(fmt, "  node [shape=circle] ;\n") ) ;
+        try!( graph_print(self, fmt, root) ) ;
+        try!( write!(fmt, "}}\n") ) ;
+        try!( fmt.flush() ) ;
       },
       Err(e) => panic!("{}", e),
     }
@@ -87,6 +120,6 @@ impl<Label: fmt::Display + Ord + Copy> ZddTreePrint<Label> for ZddTree<Label> {
     ).arg(
       format!("{}.gv", file)
     ).output().unwrap() ;
-    ()
+    Ok(())
   }
 }

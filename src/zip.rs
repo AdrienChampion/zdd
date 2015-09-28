@@ -16,30 +16,15 @@ pub enum BinaryStep<Label> {
 pub struct UnaryZip<Label> (
   pub Label,
   pub Vec<UnaryStep<Label>>,
-  pub bool,
 ) ;
 impl<Label: Copy> UnaryZip<Label> {
   #[inline(always)]
   pub fn mk(lbl: & Label) -> Self {
-    UnaryZip(* lbl, vec![], false)
+    UnaryZip(* lbl, vec![])
   }
 
   #[inline(always)]
   pub fn lbl(& self) -> & Label { & self.0 }
-
-  #[inline(always)]
-  pub fn has_one(& self) -> bool { self.2 }
-
-  #[inline(always)]
-  pub fn set_has_one(& mut self) {
-    assert!( ! self.2 ) ;
-    self.2 = true
-  }
-
-  #[inline(always)]
-  pub fn reset_has_one(& mut self) {
-    self.2 = false
-  }
 
   #[inline(always)]
   pub fn pop(& mut self) -> Option<UnaryStep<Label>> {
@@ -53,24 +38,10 @@ impl<Label: Copy> UnaryZip<Label> {
 
 pub struct BinaryZip<Label> (
   pub Vec<BinaryStep<Label>>,
-  pub bool,
 ) ;
 impl<Label> BinaryZip<Label> {
   #[inline(always)]
-  pub fn mk() -> Self { BinaryZip(vec![],false) }
-
-  #[inline(always)]
-  pub fn has_one(& self) -> bool { self.1 }
-
-  #[inline(always)]
-  pub fn set_has_one(& mut self) {
-    self.1 = true
-  }
-
-  #[inline(always)]
-  pub fn reset_has_one(& mut self) {
-    self.1 = false
-  }
+  pub fn mk() -> Self { BinaryZip(vec![]) }
 
   #[inline(always)]
   pub fn pop(& mut self) -> Option<BinaryStep<Label>> {
@@ -91,5 +62,4 @@ pub enum ZipResult<Label, Data> {
 pub enum CountZip<Label> {
   Lft(Zdd<Label>, Zdd<Label>),
   Rgt(Zdd<Label>, usize),
-  One,
 }

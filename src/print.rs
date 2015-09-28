@@ -10,7 +10,6 @@ use ::ZddTree::* ;
 pub trait ZddPrint<Label> {
   /// Pretty prints a ZDD with a prefix.
   fn print(& self, String) ;
-
   /// Print a ZDD as a graphviz graph to a file.
   fn graph_to_file(& self, & str) -> io::Result<()> ;
 }
@@ -102,9 +101,6 @@ impl<Label: fmt::Display + Ord + Copy> ZddPrint<Label> for Zdd<Label> {
         try!( write!(fmt,
           "  edge [color=\"#1e90ff\" fontcolor=\"#222222\"] ;\n\n"
         ) ) ;
-// graph [bgcolor=black]
-// node [fillcolor=white style=filled]
-// edge [color=white]
         try!( write!(fmt,
           "  node [shape=doublecircle] ; 0 ;\n"
         ) ) ;

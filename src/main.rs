@@ -51,14 +51,27 @@ pub fn run() {
   let zdd9 = factory.offset(& zdd4, & "a") ;
   print_and_wtf(& zdd9, 9, "offset_4_a", dir) ;
 
-  let zdd9 = factory.offset(& zdd4, & "a") ;
-  print_and_wtf(& zdd9, 9, "offset_4_a", dir) ;
+  let zdd10 = factory.offset(& zdd4, & "a") ;
+  print_and_wtf(& zdd10, 10, "offset_4_a", dir) ;
 
-  let zdd10 = factory.change(& zdd4, & "c") ;
-  print_and_wtf(& zdd10, 10, "change_4_c", dir) ;
+  let zdd11 = factory.change(& zdd4, & "c") ;
+  print_and_wtf(& zdd11, 11, "change_4_c", dir) ;
 
-  let zdd11 = factory.offset(& zdd10, & "b") ;
-  print_and_wtf(& zdd11, 11, "offset_10_b", dir) ;
+  let zdd12 = factory.offset(& zdd10, & "b") ;
+  print_and_wtf(& zdd12, 12, "offset_10_b", dir) ;
+
+  let zdd13 = factory.offset(& zdd11, & "b") ;
+  print_and_wtf(& zdd13, 13, "offset_11_b", dir) ;
+
+  let zdd14 = factory.offset(& zdd11, & "b") ;
+  print_and_wtf(& zdd14, 14, "offset_11_b", dir) ;
+
+  let zdd15 = factory.offset(& zdd11, & "c") ;
+  print_and_wtf(& zdd15, 15, "offset_11_c", dir) ;
+
+  let zdd16 = factory.offset(& zdd11, & "c") ;
+  print_and_wtf(& zdd16, 16, "offset_11_c", dir) ;
+
   println!("Done.\n") ;
 
   ()
@@ -124,6 +137,15 @@ pub fn run2() {
   let zdd16 = factory.inter(& zdd11, & zdd10) ;
   print_and_wtf(& zdd16, 16, "11_inter_10", dir) ;
 
+  let zdd17 = factory.union(& zdd2, & one) ;
+  print_and_wtf(& zdd17, 17, "2_union_1", dir) ;
+
+  let zdd18 = factory.change(& zdd17, & "a") ;
+  print_and_wtf(& zdd18, 18, "17_change_a", dir) ;
+
+  let zdd19 = factory.change(& zdd17, & "a") ;
+  print_and_wtf(& zdd19, 19, "17_change_a", dir) ;
+
   println!("count 1: {}", factory.count(& zdd1)) ;
   println!("count 4: {}", factory.count(& zdd4)) ;
   println!("count 11: {}", factory.count(& zdd11)) ;
@@ -133,8 +155,9 @@ pub fn run2() {
 
 }
 
+#[allow(unused)]
 fn main() {
-  run() ;
+  // run() ;
   run2() ;
   ()
 }

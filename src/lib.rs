@@ -16,7 +16,6 @@ mod zip ;
 mod factory ;
 pub use factory::Factory ;
 
-
 /// A hash consed ZDD.
 hash_cons!{ pub Zdd<Label> for ZddTree<Label> }
 
@@ -46,83 +45,55 @@ impl<Label: Eq> Eq for ZddTree<Label> {}
 /// Basic operations on ZDD.
 pub trait ZddTreeOps<Label> {
 
+  /// Returns true for all ZDDs containing the empty combination.
   fn has_one(& self) -> bool ;
 
   /// Returns the top label if the ZDD is a node, an error of `true` if the
   /// ZDD is `One` and `false` if it is `Zero`.
   #[inline(always)]
-  fn top(& self) -> Option<Label> ;
+  fn top(& self) -> Result<Label,bool> ;
 
-  /// Returns the left subtree if the ZDD is a node, an error of `true` if the
-  /// ZDD is `One` and `false` if it is `Zero`.
-  #[inline(always)]
-  fn lft(& self) -> Option<Zdd<Label>> ;
-
-  /// Returns the right subtree if the ZDD is a node, an error of `true` if the
-  /// ZDD is `One` and `false` if it is `Zero`.
-  #[inline(always)]
-  fn rgt(& self) -> Option<Zdd<Label>> ;
-
-  /// Turns a ZDD in the corresponding set of sets of labels.
+  /// Turns a ZDD in the corresponding set of sets of labels. Non-destructive.
   fn to_set(& self) -> BTreeSet<BTreeSet<Label>> ;
+
+  /// Turns a ZDD in the corresponding set of sets of labels. Destructive.
+  fn into_set(self) -> BTreeSet<BTreeSet<Label>> ;
 }
 
 impl<Label: Ord + Copy> ZddTreeOps<Label> for Zdd<Label> {
-  fn has_one(& self) -> bool { self.get().has_one() }
-  fn top(& self) -> Option<Label> { self.get().top() }
-  fn lft(& self) -> Option<Zdd<Label>> { self.get().lft() }
-  fn rgt(& self) -> Option<Zdd<Label>> { self.get().rgt() }
-  fn to_set(& self) -> BTreeSet<BTreeSet<Label>> { self.get().to_set() }
-}
-
-impl<Label: Ord + Copy> ZddTreeOps<Label> for ZddTree<Label> {
   fn has_one(& self) -> bool {
-    match self { & HasOne(_) => true, _ => false }
+    match self.get() { & HasOne(_) => true, _ => false }
   }
-  fn top(& self) -> Option<Label> {
-    match self {
-      & Zero => return None,
+  fn top(& self) -> Result<Label,bool> {
+    match self.get() {
+      & Zero => Err(false),
       // Only one recursive call if ZDD is well-formed.
-      & HasOne(ref kid) => kid.top(),
-      & Node(ref lbl, _, _) => Some(* lbl),
-    }
-  }
-  fn lft(& self) -> Option<Zdd<Label>> {
-    match self {
-      & Zero => None,
-      // Only one recursive call if ZDD is well-formed.
-      & HasOne(ref kid) => kid.lft(),
-      & Node(_, ref lft, _) => Some(lft.clone()),
-    }
-  }
-  fn rgt(& self) -> Option<Zdd<Label>> {
-    match self {
-      & Zero => None,
-      // Only one recursive call if ZDD is well-formed.
-      & HasOne(ref kid) => kid.rgt(),
-      & Node(_, _, ref rgt) => Some(rgt.clone()),
+      & HasOne(ref kid) => match kid.get() {
+        & Zero => Err(true),
+        & Node(ref lbl, _, _) => Ok(* lbl),
+        _ => panic!("[top] ZDD is ill-formed"),
+      },
+      & Node(ref lbl, _, _) => Ok(* lbl),
     }
   }
 
   fn to_set(& self) -> BTreeSet<BTreeSet<Label>> {
+    match self.top() {
+      Err(false) => BTreeSet::new(),
+      Err(true) => {
+        let mut sset = BTreeSet::new() ;
+        sset.insert(BTreeSet::new()) ;
+        sset
+      },
+      _ => self.clone().into_set()
+    }
+  }
+
+  fn into_set(self) -> BTreeSet<BTreeSet<Label>> {
     let mut set = BTreeSet::new() ;
     let mut path = vec![] ;
     let mut res = BTreeSet::new() ;
-    let mut zdd = match self {
-      & Node(ref top, ref lft, ref rgt) => {
-        let mut rgt_set = set.clone() ;
-        rgt_set.insert(* top) ;
-        path.push((rgt.clone(), rgt_set)) ;
-        lft.clone()
-      },
-      & Zero => {
-        return res
-      },
-      & HasOne(ref kid) => {
-        res.insert(set.clone()) ;
-        kid.clone()
-      },
-    } ;
+    let mut zdd = self ;
     loop {
       zdd = match zdd.get() {
         & Node(ref top, ref lft, ref rgt) => {

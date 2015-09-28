@@ -1,5 +1,3 @@
-//! TODO: optimize basic functions, there's too much cloning going on.
-
 use std::collections::HashMap ;
 use std::cmp::Eq ;
 
@@ -69,7 +67,9 @@ pub struct Factory<Label: Eq + Hash> {
   count_cache: HashMap<UnaryKey<()>, usize>,
 }
 
-impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
+impl<
+  Label: Ord + Eq + Hash + Copy + ::std::fmt::Display
+> Factory<Label> {
   pub fn mk() -> Self {
     let mut consign = HashConsign::empty() ;
     let zero = consign.mk(Zero) ;
@@ -133,6 +133,63 @@ impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
   }
 
   #[inline(always)]
+  fn rm_one(& mut self, zdd: & Zdd<Label>) -> Zdd<Label> {
+    match zdd.get() {
+      & HasOne(ref kid) => kid.clone(),
+      _ => zdd.clone(),
+    }
+  }
+
+  /// Returns the left subtree if the ZDD is a node, an error of `true` if the
+  /// ZDD is `One` and `false` if it is `Zero`.
+  #[inline(always)]
+  pub fn lft(& mut self, zdd: & Zdd<Label>) -> Result<Zdd<Label>,bool> {
+    match zdd.get() {
+      & Node(_, ref lft, _) => Ok(lft.clone()),
+      & HasOne(ref kid) => match kid.get() {
+        & Node(_, ref lft, _) => Ok(self.has_one(lft.clone())),
+        & Zero => Err(true),
+        _ => panic!("[lft] ZDD is ill-formed"),
+      },
+      & Zero => Err(false),
+    }
+  }
+
+  /// Returns the right subtree if the ZDD is a node, an error of `true` if the
+  /// ZDD is `One` and `false` if it is `Zero`.
+  #[inline(always)]
+  fn rgt(& mut self, zdd: & Zdd<Label>) -> Result<Zdd<Label>,bool> {
+    match zdd.get() {
+      & Node(_, _, ref rgt) => Ok(rgt.clone()),
+      & HasOne(ref kid) => match kid.get() {
+        & Node(_, _, ref rgt) => Ok(rgt.clone()),
+        & Zero => Err(true),
+        _ => panic!("[rgt] ZDD is ill-formed"),
+      },
+      & Zero => Err(false),
+    }
+  }
+
+  /// Returns the subtrees if the ZDD is a node, an error of `true` if the
+  /// ZDD is `One` and `false` if it is `Zero`.
+  #[inline(always)]
+  fn kids(
+    & mut self, zdd: & Zdd<Label>
+  ) -> Result<(Zdd<Label>, Zdd<Label>),bool> {
+    match zdd.get() {
+      & Node(_, ref lft, ref rgt) => Ok((lft.clone(), rgt.clone())),
+      & HasOne(ref kid) => match kid.get() {
+        & Node(_, ref lft, ref rgt) => Ok(
+          (self.has_one(lft.clone()), rgt.clone())
+        ),
+        & Zero => Err(true),
+        _ => panic!("[rgt] ZDD is ill-formed"),
+      },
+      & Zero => Err(false),
+    }
+  }
+
+  #[inline(always)]
   fn unary_cache_get<Info: Eq + Hash + Copy, Out: Clone>(
     cache: & HashMap<UnaryKey<Info>, Out>,
     zdd: & Zdd<Label>,
@@ -141,6 +198,34 @@ impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
     match cache.get( & (zdd.hkey(), * info) ) {
       None => None, Some(out) => Some(out.clone()),
     }
+  }
+
+  #[inline(always)]
+  fn offset_cache_get(
+    & self, zdd: & Zdd<Label>, lbl: & Label
+  ) -> Option<Zdd<Label>> {
+    Factory::unary_cache_get(& self.offset_cache, zdd, lbl)
+  }
+
+  #[inline(always)]
+  fn onnset_cache_get(
+    & self, zdd: & Zdd<Label>, lbl: & Label
+  ) -> Option<Zdd<Label>> {
+    Factory::unary_cache_get(& self.onnset_cache, zdd, lbl)
+  }
+
+  #[inline(always)]
+  fn change_cache_get(
+    & self, zdd: & Zdd<Label>, lbl: & Label
+  ) -> Option<Zdd<Label>> {
+    Factory::unary_cache_get(& self.change_cache, zdd, lbl)
+  }
+
+  #[inline(always)]
+  fn count_cache_get(
+    & self, zdd: & Zdd<Label>
+  ) -> Option<usize> {
+    Factory::unary_cache_get(& self.count_cache, zdd, & ())
   }
 
   #[inline(always)]
@@ -154,18 +239,46 @@ impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
     }
   }
 
+  #[inline(always)]
+  fn union_cache_get(
+    & self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
+  ) -> Option<Zdd<Label>> {
+    Factory::binary_cache_get(& self.union_cache, lhs, rhs)
+  }
+
+  #[inline(always)]
+  fn inter_cache_get(
+    & self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
+  ) -> Option<Zdd<Label>> {
+    Factory::binary_cache_get(& self.inter_cache, lhs, rhs)
+  }
+
+  #[inline(always)]
+  fn minus_cache_get(
+    & self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
+  ) -> Option<Zdd<Label>> {
+    Factory::binary_cache_get(& self.minus_cache, lhs, rhs)
+  }
+
   fn unary_cache_insert(
     & mut self,
     cache: UnaryCache,
     lbl: & Label,
     zdd: & Zdd<Label>
   ) {
+    use ::ZddPrint ;
+    // println!("inserting cache ({}, {})", cache, lbl) ;
+    // zdd.print("| ".to_string()) ;
     match match cache {
       Offset(key) => self.offset_cache.insert( (key, * lbl), zdd.clone() ),
       Onnset(key) => self.onnset_cache.insert( (key, * lbl), zdd.clone() ),
       Change(key) => self.change_cache.insert( (key, * lbl), zdd.clone() ),
     } {
-      None => (), Some(_) => panic!("cache overwrite"),
+      None => (), Some(zdd) => {
+        println!("overwrite:") ;
+        zdd.print("| ".to_string()) ;
+        panic!("cache overwrite for {} ({})", cache, lbl)
+      },
     }
   }
 
@@ -176,19 +289,15 @@ impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
   ) {
     match match cache {
       Union(key1, key2) => {
-        // Symmetric.
-        self.union_cache.insert( (key1, key2), zdd.clone() ) ;
-        self.union_cache.insert( (key2, key1), zdd.clone() )
+        self.union_cache.insert( (key1, key2), zdd.clone() ).is_some()
       },
       Inter(key1, key2) => {
-        // Symmetric.
-        self.inter_cache.insert( (key1, key2), zdd.clone() ) ;
-        self.inter_cache.insert( (key2, key1), zdd.clone() )
+        self.inter_cache.insert( (key1, key2), zdd.clone() ).is_some()
       },
       Minus(key1, key2) =>
-        self.minus_cache.insert( (key1, key2), zdd.clone() ),
+        self.minus_cache.insert( (key1, key2), zdd.clone() ).is_some(),
     } {
-      None => (), Some(_) => panic!("cache overwrite"),
+      false => (), true => panic!("cache overwrite ({})", cache),
     }
   }
 
@@ -197,10 +306,7 @@ impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
   ) -> ZipResult<Label, Zdd<Label>> {
     use zip::UnaryStep::* ;
     let mut zip = zip ;
-    let mut zdd = if zip.has_one() {
-      zip.reset_has_one() ;
-      self.has_one(zdd)
-    } else { zdd } ;
+    let mut zdd = zdd ;
     loop {
       zdd = match zip.pop() {
         None => return Done(zdd),
@@ -222,10 +328,7 @@ impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
   ) -> ZipResult<Label, (Zdd<Label>, Zdd<Label>)> {
     use zip::BinaryStep::* ;
     let mut zip = zip ;
-    let mut zdd = if zip.has_one() {
-      zip.reset_has_one() ;
-      self.has_one(zdd)
-    } else { zdd } ;
+    let mut zdd = zdd ;
     loop {
       zdd = match zip.pop() {
         None => return Done(zdd),
@@ -256,43 +359,42 @@ impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
     let mut zip = UnaryZip::mk(lbl) ;
     let mut zdd = zdd.clone() ;
     loop {
-      zdd = match zdd.get() {
+      zdd = match zdd.top() {
 
-        & Node(ref top, ref lft, ref rgt) => {
-          match Factory::unary_cache_get(& self.offset_cache, & zdd, lbl) {
-            Some(res) => {
-              println!("cache hit, offset") ;
-              return_if_done!(self ^ un res, zip)
-            },
-            None => zdd_match_height!(top,
-              above lbl => {
-                // We're above the label, going left first and updating path.
-                let cache = cache::offset(& zdd) ;
-                zip.push(Lft(cache, * top, rgt.clone())) ;
-                lft.clone()
-              },
-              equal => {
-                // Only keep left part and go up.
-                return_if_done!(self ^ un lft.clone(), zip)
-              },
-              below => {
-                // We're below the label, going up.
-                return_if_done!(self ^ un zdd.clone(), zip)
-              },
-            ),
-          }
-        },
-
-        & HasOne(ref kid) => {
-          zip.set_has_one() ;
-          kid.clone()
-        },
-
-        & Zero => {
+        Err(false) => {
           let zero = self.zero() ;
           return_if_done!(self ^ un zero, zip)
-        }
-      } ;
+        },
+
+        Err(true) => {
+          let one = self.one() ;
+          return_if_done!(self ^ un one, zip)
+        },
+
+        Ok(top) if top.gt(lbl) => {
+          // Below the label, going up.
+          return_if_done!(self ^ un zdd.clone(), zip)
+        },
+
+        Ok(top) if top.eq(lbl) => {
+          // Only keep left part and go up.
+          let lft = self.lft(& zdd).unwrap() ;
+          return_if_done!(self ^ un lft, zip)
+        },
+
+        // Above the label, querying cache.
+        Ok(top) => match self.offset_cache_get(& zdd, lbl) {
+          // Cache hit.
+          Some(res) => return_if_done!(self ^ un res, zip),
+          // Not found.
+          None => {
+            let cache = cache::offset(& zdd) ;
+            let (lft,rgt) = self.kids(& zdd).unwrap() ;
+            zip.push( Lft(cache, top, rgt) ) ;
+            lft
+          },
+        },
+      }
     }
   }
 
@@ -303,43 +405,38 @@ impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
     let mut zip = UnaryZip::mk(lbl) ;
     let mut zdd = zdd.clone() ;
     loop {
-      zdd = match zdd.get() {
+      zdd = match zdd.top() {
 
-        & Node(ref top, ref lft, ref rgt) => {
-          match Factory::unary_cache_get(& self.onnset_cache, & zdd, lbl) {
-            Some(res) => {
-              println!("cache hit, onset") ;
-              return_if_done!(self ^ un res, zip)
-            },
-            None => zdd_match_height!(top,
-              above lbl => {
-                // We're above the label, going left first and updating path.
-                let cache = cache::onnset(& zdd) ;
-                zip.push(Lft(cache, * top, rgt.clone())) ;
-                lft.clone()
-              },
-              equal => {
-                // Only keep right part and go up.
-                return_if_done!(self ^ un rgt.clone(), zip)
-              },
-              below => {
-                // We're below the label, it's not there.
-                let zero = self.zero() ;
-                return_if_done!(self ^ un zero, zip)
-              },
-            ),
-          }
-        },
-
-        & HasOne(ref kid) => {
-          kid.clone()
-        },
-
-        & Zero => {
+        Err(_) => {
           let zero = self.zero() ;
           return_if_done!(self ^ un zero, zip)
         },
-      } ;
+
+        Ok(top) if top.gt(lbl) => {
+          // Below the label, it's not there.
+          let zero = self.zero() ;
+          return_if_done!(self ^ un zero, zip)
+        },
+
+        Ok(top) if top.eq(lbl) => {
+          // Only keep right part and go up.
+          let rgt = self.rgt(& zdd).unwrap() ;
+          return_if_done!(self ^ un rgt, zip)
+        }
+
+        // Above the label, querying cache.
+        Ok(top) => match self.onnset_cache_get(& zdd, lbl) {
+          // Cache hit.
+          Some(res) => return_if_done!(self ^ un res, zip),
+          // Not found.
+          None => {
+            let cache = cache::onnset(& zdd) ;
+            let (lft,rgt) = self.kids(& zdd).unwrap() ;
+            zip.push( Lft(cache, top, rgt) ) ;
+            lft
+          },
+        },
+      }
     }
   }
 
@@ -350,52 +447,47 @@ impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
     let mut zip = UnaryZip::mk(lbl) ;
     let mut zdd = zdd.clone() ;
     loop {
-      zdd = match zdd.get() {
+      zdd = match zdd.top() {
 
-        & Node(ref top, ref lft, ref rgt) => {
-          match Factory::unary_cache_get(& self.change_cache, & zdd, lbl) {
-            Some(res) => {
-              println!("cache hit, onset") ;
-              return_if_done!(self ^ un res, zip)
-            },
-            None => zdd_match_height!(top,
-              above lbl => {
-                // We're above the label, going left first and updating path.
-                let cache = cache::change(& zdd) ;
-                zip.push(Lft(cache, * top, rgt.clone())) ;
-                lft.clone()
-              },
-              equal => {
-                // Change and go up.
-                let zdd = self.node(* top, rgt.clone(), lft.clone()) ;
-                return_if_done!(self ^ un zdd, zip)
-              },
-              below => {
-                // We're below the label, it's not there.
-                return_if_done!(self ^ un zdd.clone(), zip)
-              },
-            ),
-          }
+        Err(false) => {
+          let zero = self.zero() ;
+          return_if_done!(self ^ un zero, zip)
         },
 
-        & HasOne(ref kid) => {
-          zip.set_has_one() ;
-          kid.clone()
+        Err(true) => {
+          let zero = self.zero() ;
+          let one = self.one() ;
+          let zdd = self.node(* lbl, zero, one) ;
+          return_if_done!(self ^ un zdd, zip)
         },
 
-        & Zero => {
-          if zip.has_one() {
-            let zero = self.zero() ;
-            let one = self.one() ;
-            let zdd = self.node(* lbl, zero, one) ;
-            zip.reset_has_one() ;
-            return_if_done!(self ^ un zdd, zip)
-          } else {
-            let zero = self.zero() ;
-            return_if_done!(self ^ un zero, zip)
-          }
+        Ok(top) if top.gt(lbl) => {
+          // Below the label, not there so adding it.
+          let zero = self.zero() ;
+          let zdd = self.node(* lbl, zero, zdd.clone()) ;
+          return_if_done!(self ^ un zdd, zip)
         },
-      } ;
+
+        Ok(top) if top.eq(lbl) => {
+          // Swap left and right.
+          let (lft,rgt) = self.kids(& zdd).unwrap() ;
+          let zdd = self.node(top, rgt, lft) ;
+          return_if_done!(self ^ un zdd, zip)
+        },
+
+        // Above the label, querying cache.
+        Ok(top) => match self.change_cache_get(& zdd, lbl) {
+          // Cache hit.
+          Some(res) => return_if_done!(self ^ un res, zip),
+          // Not found.
+          None => {
+            let cache = cache::change(& zdd) ;
+            let (lft, rgt) = self.kids(& zdd).unwrap() ;
+            zip.push( Lft(cache, top, rgt) ) ;
+            lft
+          },
+        },
+      }
     }
   }
 
@@ -407,87 +499,66 @@ impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
     let mut zip = BinaryZip::mk() ;
     let mut pair = (lhs.clone(), rhs.clone()) ;
     loop {
+
       let (lhs, rhs) = pair ;
 
-      pair = match (
-        lhs == rhs,
-        self.is_zero(& lhs), self.is_zero(& rhs),
-        self.is_one(& lhs), self.is_one(& rhs)
-      ) {
+      pair = if lhs == rhs {
+        return_if_done!(self ^ bin lhs, zip)
+      } else {
+        match (lhs.top(), rhs.top()) {
 
-        // Catching simple cases first.
-        (true,_,_,_,_) => return_if_done!(self ^ bin lhs, zip),
-        (_,true,_,_,_) => return_if_done!(self ^ bin rhs, zip),
-        (_,_,true,_,_) => return_if_done!(self ^ bin lhs, zip),
-        (_,_,_,true,_) => {
-          let zdd = self.has_one(rhs) ;
-          return_if_done!(self ^ bin zdd, zip)
-        },
-        (_,_,_,_,true) => {
-          let zdd = self.has_one(lhs) ;
-          return_if_done!(self ^ bin zdd, zip)
-        },
+          // One of them is the empty set.
+          (Err(false), _) => return_if_done!(self ^ bin rhs, zip),
+          (_, Err(false)) => return_if_done!(self ^ bin lhs, zip),
 
-        // Querying cache.
-        _ => match Factory::binary_cache_get(
-          & self.union_cache, & lhs, & rhs
-        ) {
-          Some(res) => {
-            println!("cache hit, union") ;
-            return_if_done!(self ^ bin res, zip)
+          // One of them contains only the empty combination.
+          (Err(true), _) => {
+            let zdd = self.has_one(rhs) ;
+            return_if_done!(self ^ bin zdd, zip)
           },
-          None => match (lhs.get(), rhs.get()) {
+          (_, Err(true)) => {
+            let zdd = self.has_one(lhs) ;
+            return_if_done!(self ^ bin zdd, zip)
+          },
 
-            // One of them has one.
-            (& HasOne(ref l_kid), & HasOne(ref r_kid)) => {
-              zip.set_has_one() ;
-              (l_kid.clone(), r_kid.clone())
-            },
-            (& HasOne(ref l_kid), _) => {
-              zip.set_has_one() ;
-              (l_kid.clone(), rhs.clone())
-            },
-            (_, & HasOne(ref r_kid)) => {
-              zip.set_has_one() ;
-              (lhs.clone(), r_kid.clone())
-            },
+          // Both are nodes.
+          (Ok(l_top), Ok(r_top)) => {
+            // Reordering to have rhs below lhs.
+            let (lhs, rhs, l_top, r_top) = if l_top > r_top {
+              (rhs, lhs, r_top, l_top)
+            } else {
+              (lhs, rhs, l_top, r_top)
+            } ;
 
-            // Both are nodes.
-            _ => {
-              let cache = cache::union(& lhs, & rhs) ;
-              // Reordering so that highest one is `lhs`.
-              let tops = (lhs.top(), rhs.top()) ;
-              let (lhs, rhs, l_lbl, r_lbl) = match tops {
-                (Some(l), Some(r)) =>
-                  if l > r { (& rhs, & lhs, r, l) }
-                  else { (& lhs, & rhs, l, r) },
-                _ => unreachable!(),
-              } ;
-              match (lhs.get(), rhs.get()) {
+            // Querying cache.
+            match self.union_cache_get(& lhs, & rhs) {
+              // Cache hit.
+              Some(res) => return_if_done!(self ^ bin res, zip),
+              // Not found.
+              None => {
+                let cache = cache::union(& lhs, & rhs) ;
 
-                (& Node(ref top, ref lft, ref rgt), _) if l_lbl < r_lbl => {
-                  // `lhs` is above `rhs`.
-                  zip.push(TLft(cache, * top, rgt.clone())) ;
-                  (lft.clone(), rhs.clone())
-                },
-
-                (
-                  & Node(ref l_lbl, ref l_lft, ref l_rgt),
-                  & Node(ref r_lbl, ref r_lft, ref r_rgt)
-                ) => {
-                  // `lhs` and `rhs` are at the same level.
-                  assert!( l_lbl == r_lbl ) ;
-                  zip.push(Lft(cache, * l_lbl, l_rgt.clone(), r_rgt.clone())) ;
-                  (l_lft.clone(), r_lft.clone())
-                },
-
-                _ => unreachable!(),
-
-              }
+                if l_top == r_top {
+                  // Extracting kids.
+                  let (l_lft,l_rgt) = self.kids(& lhs).unwrap() ;
+                  let (r_lft,r_rgt) = self.kids(& rhs).unwrap() ;
+                  // Recursing.
+                  zip.push(Lft(cache, l_top, l_rgt, r_rgt)) ;
+                  (l_lft, r_lft)
+                } else {
+                  // Making sure lhs is above.
+                  assert!(l_top < r_top) ;
+                  // Extracting kids from lhs.
+                  let (l_lft,l_rgt) = self.kids(& lhs).unwrap() ;
+                  // Recursing on left kid.
+                  zip.push(TLft(cache, l_top, l_rgt)) ;
+                  (l_lft, rhs)
+                }
+              },
             }
-          }
+          },
         }
-      }
+      } ;
     }
   }
 
@@ -501,81 +572,61 @@ impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
     loop {
       let (lhs, rhs) = pair ;
 
-      pair = match (
-        lhs == rhs,
-        self.is_zero(& lhs), self.is_zero(& rhs),
-        self.is_one(& lhs), self.is_one(& rhs)
-      ) {
+      pair = if lhs == rhs {
+        return_if_done!(self ^ bin lhs, zip)
+      } else {
+        match (lhs.top(), rhs.top()) {
 
-        // Catching simple cases first.
-        (true,_,_,_,_) => return_if_done!(self ^ bin lhs, zip),
-        (_,true,_,_,_) | (_,_,true,_,_) => {
-          let zdd = self.zero() ;
-          return_if_done!(self ^ bin zdd, zip)
-        },
-        (_,_,_,true,_) => {
-          let zdd = if rhs.has_one() { self.one() } else { self.zero() } ;
-          return_if_done!(self ^ bin zdd, zip)
-        },
-        (_,_,_,_,true) => {
-          let zdd = if lhs.has_one() { self.one() } else { self.zero() } ;
-          return_if_done!(self ^ bin zdd, zip)
-        },
-
-        // Querying cache.
-        _ => match Factory::binary_cache_get(
-          & self.inter_cache, & lhs, & rhs
-        ) {
-          Some(res) => {
-            println!("cache hit, union") ;
-            return_if_done!(self ^ bin res, zip)
+          // Trivial cases.
+          (Err(false), _) | (_, Err(false)) => {
+            let zero = self.zero() ;
+            return_if_done!(self ^ bin zero, zip)
           },
-          None => match (lhs.get(), rhs.get()) {
 
-            // One of them has one.
-            (& HasOne(ref l_kid), & HasOne(ref r_kid)) => {
-              zip.set_has_one() ;
-              (l_kid.clone(), r_kid.clone())
-            },
-            (& HasOne(ref l_kid), _) => (l_kid.clone(), rhs.clone()),
-            (_, & HasOne(ref r_kid)) => (lhs.clone(), r_kid.clone()),
+          (Err(true), _) => {
+            let zdd = if rhs.has_one() { lhs } else { self.zero() } ;
+            return_if_done!(self ^ bin zdd, zip)
+          },
+          (_, Err(true)) => {
+            let zdd = if lhs.has_one() { rhs } else { self.zero() } ;
+            return_if_done!(self ^ bin zdd, zip)
+          },
 
-            // Both are nodes.
-            _ => {
-              let cache = cache::inter(& lhs, & rhs) ;
-              // Reordering so that highest one is `lhs`.
-              let tops = (lhs.top(), rhs.top()) ;
-              let (lhs, rhs, l_lbl, r_lbl) = match tops {
-                (Some(l), Some(r)) =>
-                  if l > r { (& rhs, & lhs, r, l) }
-                  else { (& lhs, & rhs, l, r) },
-                _ => unreachable!(),
-              } ;
-              match (lhs.get(), rhs.get()) {
+          // Both are nodes.
+          (Ok(l_top), Ok(r_top)) => {
+            // Reordering to have rhs below lhs.
+            let (lhs, rhs, l_top, r_top) = if l_top > r_top {
+              (rhs, lhs, r_top, l_top)
+            } else {
+              (lhs, rhs, l_top, r_top)
+            } ;
 
-                (& Node(_, ref lft, _), _)
-                if l_lbl < r_lbl => {
-                  // `lhs` is above `rhs`.
-                  (lft.clone(), rhs.clone())
-                },
-
-                (
-                  & Node(ref l_lbl, ref l_lft, ref l_rgt),
-                  & Node(ref r_lbl, ref r_lft, ref r_rgt)
-                ) => {
-                  // `lhs` and `rhs` are at the same level.
-                  assert!( l_lbl == r_lbl ) ;
-                  zip.push(Lft(cache, * l_lbl, l_rgt.clone(), r_rgt.clone())) ;
-                  (l_lft.clone(), r_lft.clone())
-                },
-
-                _ => unreachable!(),
-
-              }
+            // Querying cache.
+            match self.inter_cache_get(& lhs, & rhs) {
+              // Cache hit.
+              Some(res) => return_if_done!(self ^ bin res, zip),
+              // Not found.
+              None => {
+                let cache = cache::inter(& lhs, & rhs) ;
+                if l_top == r_top {
+                  // Extracting kids.
+                  let (l_lft,l_rgt) = self.kids(& lhs).unwrap() ;
+                  let (r_lft,r_rgt) = self.kids(& rhs).unwrap() ;
+                  // Recursing.
+                  zip.push(Lft(cache, l_top, l_rgt, r_rgt)) ;
+                  (l_lft, r_lft)
+                } else {
+                  // Making sure lhs is above.
+                  assert!(l_top < r_top) ;
+                  // Discarding right kid, it's not in the intersection.
+                  let l_lft = self.lft(& lhs).unwrap() ;
+                  (l_lft, rhs)
+                }
+              },
             }
-          }
+          },
         }
-      }
+      } ;
     }
   }
 
@@ -589,145 +640,113 @@ impl<Label: Ord + Eq + Hash + Copy + ::std::fmt::Display> Factory<Label> {
     loop {
       let (lhs, rhs) = pair ;
 
-      pair = match (
-        lhs == rhs,
-        self.is_zero(& lhs), self.is_zero(& rhs),
-        self.is_one(& lhs), self.is_one(& rhs)
-      ) {
+      pair = if lhs == rhs {
+        let zero = self.zero() ;
+        return_if_done!(self ^ bin zero, zip)
+      } else {
+        match (lhs.top(), rhs.top()) {
 
-        // Catching simple cases first.
-        (true,_,_,_,_) | (_,true,_,_,_) => {
-          let zdd = self.zero() ;
-          return_if_done!(self ^ bin zdd, zip)
-        },
-        (_,_,true,_,_) => {
-          return_if_done!(self ^ bin lhs, zip)
-        },
-        (_,_,_,true,_) => {
-          let zdd = if rhs.has_one() { self.zero() } else { self.one() } ;
-          return_if_done!(self ^ bin zdd, zip)
-        },
-        (_,_,_,_,true) => {
-          let zdd = match lhs.get() {
-            & HasOne(ref kid) => kid.clone(),
-            _ => lhs.clone(),
-          } ;
-          return_if_done!(self ^ bin zdd, zip)
-        },
+          // One of them is the empty set.
+          (Err(false), _) | (_, Err(false)) =>
+            return_if_done!(self ^ bin lhs, zip),
 
-        // Querying cache.
-        _ => match Factory::binary_cache_get(
-          & self.minus_cache, & lhs, & rhs
-        ) {
-          Some(res) => {
-            println!("cache hit, union") ;
-            return_if_done!(self ^ bin res, zip)
+          // One of them contains only the empty combination.
+          (Err(true), _) => {
+            let zdd = if rhs.has_one() { self.zero() } else { lhs } ;
+            return_if_done!(self ^ bin zdd, zip)
           },
-          None => match (lhs.get(), rhs.get()) {
+          (_, Err(true)) => {
+            let zdd = self.rm_one(& lhs) ;
+            return_if_done!(self ^ bin zdd, zip)
+          },
 
-            // One of them has one.
-            (& HasOne(ref l_kid), & HasOne(ref r_kid)) =>
-              (l_kid.clone(), r_kid.clone()),
-            (_, & HasOne(ref r_kid)) =>
-              (lhs.clone(), r_kid.clone()),
-            (& HasOne(ref l_kid), _) => {
-              zip.set_has_one() ;
-              (l_kid.clone(), rhs.clone())
-            },
-
-            // Both are nodes.
-            _ => {
+          // Both are nodes, querying cache.
+          (Ok(l_top), Ok(r_top)) => match self.minus_cache_get(& lhs, & rhs) {
+            // Cache hit.
+            Some(res) => return_if_done!(self ^ bin res, zip),
+            // Not found.
+            None => {
               let cache = cache::minus(& lhs, & rhs) ;
-              let (l_lbl, r_lbl) = match (lhs.top(), rhs.top()) {
-                (Some(l), Some(r)) => (l,r),
-                _ => unreachable!(),
-              } ;
-              match (lhs.get(), rhs.get()) {
 
-                (& Node(ref lbl, ref lft, ref rgt), _) if l_lbl < r_lbl => {
-                  // `lhs` is above `rhs`.
-                  zip.push(TLft(cache, *lbl, rgt.clone())) ;
-                  (lft.clone(), rhs.clone())
-                },
-
-                (_, & Node(_, ref lft, _)) if l_lbl > r_lbl => {
-                  // `lhs` is below `rhs`.
-                  (lhs.clone(), lft.clone())
-                },
-
-                (
-                  & Node(ref l_lbl, ref l_lft, ref l_rgt),
-                  & Node(ref r_lbl, ref r_lft, ref r_rgt)
-                ) => {
-                  // `lhs` and `rhs` are at the same level.
-                  assert!( l_lbl == r_lbl ) ;
-                  zip.push(Lft(cache, * l_lbl, l_rgt.clone(), r_rgt.clone())) ;
-                  (l_lft.clone(), r_lft.clone())
-                },
-
-                _ => unreachable!(),
-
+              if l_top < r_top {
+                // lhs is above.
+                let (l_lft,l_rgt) = self.kids(& lhs).unwrap() ;
+                // Recursing on left kid.
+                zip.push(TLft(cache, l_top, l_rgt)) ;
+                (l_lft, rhs)
+              } else {
+                if r_top < l_top {
+                  // rhs is above, discarding its right kid.
+                  let r_lft = self.lft(& rhs).unwrap() ;
+                  // Recursing.
+                  (lhs, r_lft)
+                } else {
+                  // Extracting kids.
+                  let (l_lft,l_rgt) = self.kids(& lhs).unwrap() ;
+                  let (r_lft,r_rgt) = self.kids(& rhs).unwrap() ;
+                  // Recursing.
+                  zip.push(Lft(cache, l_top, l_rgt, r_rgt)) ;
+                  (l_lft, r_lft)
+                }
               }
-            }
-          }
+            },
+          },
         }
-      }
+      } ;
     }
   }
 
   pub fn count(& mut self, zdd: & Zdd<Label>) -> usize {
     use zip::CountZip::* ;
-    if self.is_zero(zdd) { return 0 } ;
-    if self.is_one(zdd) { return 1 } ;
     let mut zip = vec![ ] ;
     let mut zdd = zdd.clone() ;
     let mut count = 0 ;
     loop {
-      if ! self.is_zero(& zdd) {
-        match Factory::unary_cache_get(
-          & self.count_cache, & zdd, & ()
-        ) {
+      match zdd.top() {
+        // ZDD is a leaf, looping.
+        Err(has_one) => {
+          if has_one { count = count + 1 } ;
+          loop {
+            match zip.pop() {
+              // We done.
+              None => return count,
+
+              // Recursing, memorizing count.
+              Some( Lft(key, rgt) ) => {
+                zip.push(Rgt(key, count)) ;
+                count = 0 ;
+                zdd = rgt ;
+                break
+              },
+
+              // Going up.
+              Some( Rgt(key, lft_cnt) ) => {
+                count = count + lft_cnt ;
+                self.count_cache.insert( (key.hkey(), ()), count ) ;
+                ()
+              },
+            }
+          }
+        },
+
+        // It's a node, querying cache.
+        _ => match self.count_cache_get(& zdd) {
+          // Cache hit.
           Some(cnt) => {
             count = count + cnt ;
             zdd = self.zero()
           },
-          None => zdd = match zdd.get() {
-            & Node(_, ref lft, ref rgt) => {
-              zip.push( Lft(zdd.clone(), rgt.clone()) ) ;
-              lft.clone()
-            },
-            & HasOne(ref kid) => {
-              zip.push( One ) ;
-              kid.clone()
-            },
-            _ => unreachable!(),
-          }
-        }
-      } else {
 
-        loop {
-          match zip.pop() {
-            None => return count,
-            Some( Lft(key, rgt) ) => {
-              zip.push(Rgt(key, count)) ;
-              count = 0 ;
-              zdd = rgt ;
-              break
-            },
-            Some( One ) => {
-              count = count + 1
-            },
-            Some( Rgt(key, lft_cnt) ) => {
-              count = count + lft_cnt ;
-              self.count_cache.insert( (key.hkey(), ()), count ) ;
-              ()
-            },
-          }
-        }
+          // Not found.
+          None => {
+            let (lft,rgt) = self.kids(& zdd).unwrap() ;
+            zip.push(Lft(zdd, rgt)) ;
+            zdd = lft
+          },
+        },
       }
     }
   }
-
 
 
 }

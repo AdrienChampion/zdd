@@ -16,7 +16,10 @@ pub trait ZddPrint<Label> {
 
 /// Prints a ZDD as a graphviz graph to a `Write`.
 fn graph_print<Label: fmt::Display + Ord + Copy>(
-  zdd: & Zdd<Label>, fmt: & mut io::Write, root: & 'static str
+  fmt: & mut io::Write,
+  zdd: & Zdd<Label>,
+  root: & 'static str,
+  zero: & 'static str
 ) -> io::Result<()> {
   use std::collections::HashSet ;
   let mut mem = HashSet::new() ;
@@ -30,26 +33,28 @@ fn graph_print<Label: fmt::Display + Ord + Copy>(
       match zdd.get() {
         & Zero => try!(
           write!(
-            fmt, "  {} -> 0 [{}{}] ;\n", parent, edge_lbl, style
+            fmt, "  {} -> {} [{}{}] ;\n", parent, zero, edge_lbl, style
           )
         ),
         & HasOne(ref kid) => to_do.push(
           (parent, edge_lbl, true, kid.clone())
         ),
         & Node(ref lbl, ref left, ref right) => {
+          let name = zdd.hkey().to_string() ;
+          try!(write!(fmt, "  {} [label=\"{}\"] ; \n", name, lbl)) ;
           try!(
             write!(
               fmt, "  {} -> {} [{}{}] ;\n",
-              parent, lbl, edge_lbl, style
+              parent, name, edge_lbl, style
             )
           ) ;
           if ! mem.contains(& zdd) {
             mem.insert(zdd.clone()) ;
             to_do.push(
-              (format!("{}", lbl), "arrowhead=empty", false, right.clone())
+              (name.clone(), "arrowhead=empty", false, right.clone())
             ) ;
             to_do.push(
-              (format!("{}", lbl), "", false, left.clone())
+              (name, "", false, left.clone())
             )
           }
         },
@@ -81,8 +86,9 @@ impl<Label: fmt::Display + Ord + Copy> ZddPrint<Label> for Zdd<Label> {
     use std::fs::{ OpenOptions } ;
     use std::io::Write ;
     use std::process::Command ;
-    let root = "root" ;
-    match OpenOptions::new().write(true).create(true).open(
+    let root = "root_of_the_zdd" ;
+    let zero = "zero_of_the_zdd" ;
+    match OpenOptions::new().write(true).create(true).truncate(true).open(
       format!("{}.gv", file)
     ) {
       Ok(mut f) => {
@@ -102,10 +108,10 @@ impl<Label: fmt::Display + Ord + Copy> ZddPrint<Label> for Zdd<Label> {
           "  edge [color=\"#1e90ff\" fontcolor=\"#222222\"] ;\n\n"
         ) ) ;
         try!( write!(fmt,
-          "  node [shape=doublecircle] ; 0 ;\n"
+          "  node [shape=doublecircle] ; {} [label=\"{{}}\"] ;\n", zero
         ) ) ;
         try!( write!(fmt, "  node [shape=circle] ;\n") ) ;
-        try!( graph_print(self, fmt, root) ) ;
+        try!( graph_print(fmt, self, root, zero) ) ;
         try!( write!(fmt, "}}\n") ) ;
         try!( fmt.flush() ) ;
       },

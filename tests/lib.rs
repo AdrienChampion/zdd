@@ -14,6 +14,7 @@ type Set = BTreeSet<Lbl> ;
 type SSet = BTreeSet<Set> ;
 type Zdd = zdd::Zdd<Lbl> ;
 type Factory = zdd::Factory<Lbl> ;
+type FBuilder = zdd::FactoryBuilder ;
 
 fn sset_print(sset: & SSet, pref: String) {
   println!("{}{{", pref) ;
@@ -338,7 +339,7 @@ fn run(factory: & mut Factory, u_bound: usize, max: usize) -> usize {
 
 #[test]
 fn thirteen_times_100() {
-  let mut factory = Factory::mk() ;
+  let mut factory = FBuilder::mk().len(1300).build() ;
   for _ in 0..13 {
     run(& mut factory, 100, 100) ;
   }
@@ -346,7 +347,7 @@ fn thirteen_times_100() {
 
 #[test]
 fn seven_times_10000() {
-  let mut factory = Factory::mk() ;
+  let mut factory = FBuilder::mk().len(10000).build() ;
   for _ in 0..7 {
     run(& mut factory, 10000, 100) ;
   }
@@ -354,7 +355,7 @@ fn seven_times_10000() {
 
 #[test]
 fn five_times_1000000() {
-  let mut factory = Factory::mk() ;
+  let mut factory = FBuilder::mk().len(1000000).build() ;
   let mut max = 0 ;
   for _ in 0..5 {
     max = run(& mut factory, 1000000, max)

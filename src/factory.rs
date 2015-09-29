@@ -177,9 +177,7 @@ impl<Label: Eq + Hash + Clone> zip::BinaryLabelZipper<
   }
 }
 
-impl<
-  Label: Ord + Eq + Hash + Copy
-> Factory<Label> {
+impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
 
   /// Creates a new factory.
   pub fn mk() -> Self {
@@ -338,12 +336,12 @@ impl<
 
   /// Queries a unary cache.
   #[inline(always)]
-  fn unary_cache_get<Info: Eq + Hash + Copy, Out: Clone>(
+  fn unary_cache_get<Info: Eq + Hash + Clone, Out: Clone>(
     cache: & HashMap<UnaryKey<Info>, Out>,
     zdd: & Zdd<Label>,
     info: & Info
   ) -> Option<Out> {
-    match cache.get( & (zdd.hkey(), * info) ) {
+    match cache.get( & (zdd.hkey(), info.clone()) ) {
       None => None, Some(out) => Some(out.clone()),
     }
   }
@@ -449,7 +447,7 @@ impl<
   ) -> Zdd<Label> {
     use zip::UnZipStep::* ;
     use zip::UnaryLabelZipper ;
-    let mut zip = zip::offset(* lbl) ;
+    let mut zip = zip::offset(lbl.clone()) ;
     let mut zdd = zdd.clone() ;
     loop {
       zdd = match zdd.top() {
@@ -459,23 +457,23 @@ impl<
         Err(true) => zip_up!(self ^ .one, zip),
 
         // Below the label, going up.
-        Ok(top) if top.gt(lbl) => zip_up!(self ^ zdd, zip),
+        Ok(ref top) if top.gt(lbl) => zip_up!(self ^ zdd, zip),
 
-        Ok(top) if top.eq(lbl) => {
+        Ok(ref top) if top.eq(lbl) => {
           // Only keep left part and go up.
           let lft = self.lft(& zdd).unwrap() ;
           zip_up!(self ^ lft, zip)
         },
 
         // Above the label, querying cache.
-        Ok(top) => match self.offset_cache_get(& zdd, lbl) {
+        Ok(ref top) => match self.offset_cache_get(& zdd, lbl) {
           // Cache hit.
           Some(res) => zip_up!(self ^ res, zip),
           // Not found.
           None => {
             let key = zdd.hkey() ;
             let (lft,rgt) = self.kids(& zdd).unwrap() ;
-            zip.push( key, Lft(top, rgt) ) ;
+            zip.push( key, Lft(top.clone(), rgt) ) ;
             lft
           },
         },
@@ -490,7 +488,7 @@ impl<
   ) -> Zdd<Label> {
     use zip::UnZipStep::* ;
     use zip::UnaryLabelZipper ;
-    let mut zip = zip::onset(* lbl) ;
+    let mut zip = zip::onset(lbl.clone()) ;
     let mut zdd = zdd.clone() ;
     loop {
       zdd = match zdd.top() {
@@ -498,23 +496,23 @@ impl<
         Err(_) => zip_up!(self ^ .zero, zip),
 
         // Below the label, it's not there.
-        Ok(top) if top.gt(lbl) => zip_up!(self ^ .zero, zip),
+        Ok(ref top) if top.gt(lbl) => zip_up!(self ^ .zero, zip),
 
-        Ok(top) if top.eq(lbl) => {
+        Ok(ref top) if top.eq(lbl) => {
           // Only keep right part and go up.
           let rgt = self.rgt(& zdd).unwrap() ;
           zip_up!(self ^ rgt, zip)
         }
 
         // Above the label, querying cache.
-        Ok(top) => match self.onset_cache_get(& zdd, lbl) {
+        Ok(ref top) => match self.onset_cache_get(& zdd, lbl) {
           // Cache hit.
           Some(res) => zip_up!(self ^ res, zip),
           // Not found.
           None => {
             let key = zdd.hkey() ;
             let (lft,rgt) = self.kids(& zdd).unwrap() ;
-            zip.push( key, Lft(top, rgt) ) ;
+            zip.push( key, Lft(top.clone(), rgt) ) ;
             lft
           },
         },
@@ -529,7 +527,7 @@ impl<
   ) -> Zdd<Label> {
     use zip::UnZipStep::* ;
     use zip::UnaryLabelZipper ;
-    let mut zip = zip::change(* lbl) ;
+    let mut zip = zip::change(lbl.clone()) ;
     let mut zdd = zdd.clone() ;
     loop {
       zdd = match zdd.top() {
@@ -539,33 +537,33 @@ impl<
         Err(true) => {
           let zero = self.zero() ;
           let one = self.one() ;
-          let zdd = self.node(* lbl, zero, one) ;
+          let zdd = self.node(lbl.clone(), zero, one) ;
           zip_up!(self ^ zdd, zip)
         },
 
-        Ok(top) if top.gt(lbl) => {
+        Ok(ref top) if top.gt(lbl) => {
           // Below the label, not there so adding it.
           let zero = self.zero() ;
-          let zdd = self.node(* lbl, zero, zdd.clone()) ;
+          let zdd = self.node(lbl.clone(), zero, zdd.clone()) ;
           zip_up!(self ^ zdd, zip)
         },
 
-        Ok(top) if top.eq(lbl) => {
+        Ok(ref top) if top.eq(lbl) => {
           // Swap left and right.
           let (lft,rgt) = self.kids(& zdd).unwrap() ;
-          let zdd = self.node(top, rgt, lft) ;
+          let zdd = self.node(top.clone(), rgt, lft) ;
           zip_up!(self ^ zdd, zip)
         },
 
         // Above the label, querying cache.
-        Ok(top) => match self.change_cache_get(& zdd, lbl) {
+        Ok(ref top) => match self.change_cache_get(& zdd, lbl) {
           // Cache hit.
           Some(res) => zip_up!(self ^ res, zip),
           // Not found.
           None => {
             let key = zdd.hkey() ;
             let (lft, rgt) = self.kids(& zdd).unwrap() ;
-            zip.push( key, Lft(top, rgt) ) ;
+            zip.push( key, Lft(top.clone(), rgt) ) ;
             lft
           },
         },
@@ -761,5 +759,108 @@ impl<
         }
       } ;
     }
+  }
+}
+
+/// A factory for `Factory` to set the capacity of the consign and the caches.
+pub struct FactoryBuilder {
+  consign: usize,
+
+  count: usize,
+
+  offset: usize, onset: usize, change: usize,
+
+  union: usize, inter: usize, minus: usize,
+}
+
+impl FactoryBuilder {
+  /// Builds the factory with the capacities.
+  pub fn build<Label: Eq + Hash>(self) -> Factory<Label> {
+    let mut consign = HashConsign::empty_with_capacity(self.consign) ;
+    let zero = consign.mk(Zero) ;
+    let one = consign.mk( HasOne(zero.clone()) ) ;
+    Factory {
+      consign: consign,
+
+      one: one,
+      zero: zero,
+
+      count_cache: HashMap::with_capacity(self.count),
+
+      offset_cache: HashMap::with_capacity(self.offset),
+      onset_cache: HashMap::with_capacity(self.onset),
+      change_cache: HashMap::with_capacity(self.change),
+
+      union_cache: HashMap::with_capacity(self.union),
+      inter_cache: HashMap::with_capacity(self.inter),
+      minus_cache: HashMap::with_capacity(self.minus),
+    }
+  }
+
+  /// Creates a new factory builder with all capacities equal to zero.
+  pub fn mk() -> Self {
+    FactoryBuilder {
+      consign: 0,
+
+      count: 0,
+
+      offset: 0, onset: 0, change: 0,
+
+      union: 0, inter: 0, minus: 0,
+    }
+  }
+
+  /// Sets the capacities of the consign and all the caches at once.
+  pub fn len(mut self, l: usize) -> Self {
+    self.consign = l ;
+    self.caches_len(l)
+  }
+
+  /// Sets the capacity of the consign.
+  pub fn consign_len(mut self, l: usize) -> Self {
+    self.consign = l ; self
+  }
+
+  /// Sets the capacities of all the caches at once.
+  pub fn caches_len(mut self, l: usize) -> Self {
+    self.count = l ;
+    self.offset = l ;
+    self.onset = l ;
+    self.change = l ;
+    self.union = l ;
+    self.inter = l ;
+    self.minus = l ;
+    self
+  }
+
+  /// Sets the capacity of the count cache.
+  pub fn count_cache_len(mut self, l: usize) -> Self {
+    self.count = l ; self
+  }
+
+  /// Sets the capacity of the offset cache.
+  pub fn offset_cache_len(mut self, l: usize) -> Self {
+    self.offset = l ; self
+  }
+  /// Sets the capacity of the onset cache.
+  pub fn onset_cache_len(mut self, l: usize) -> Self {
+    self.onset = l ; self
+  }
+  /// Sets the capacity of the change cache.
+  pub fn change_cache_len(mut self, l: usize) -> Self {
+    self.change = l ; self
+  }
+
+  /// Sets the capacity of the union cache.
+  pub fn union_cache_len(mut self, l: usize) -> Self {
+    self.union = l ; self
+  }
+  /// Sets the capacity of the inter cache.
+  pub fn inter_cache_len(mut self, l: usize) -> Self {
+    self.inter = l ; self
+  }
+  /// Sets the capacity of the minus cache.
+  pub fn minus_cache_len(mut self, l: usize) -> Self {
+    self.minus = l ; self
   }
 }

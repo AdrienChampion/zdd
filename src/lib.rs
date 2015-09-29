@@ -23,6 +23,7 @@ pub use print::ZddPrint ;
 mod zip ;
 
 mod factory ;
+pub use factory::FactoryBuilder ;
 pub use factory::Factory ;
 
 /// A hash consed ZDD.
@@ -91,7 +92,7 @@ pub trait ZddTreeOps<Label> {
   fn into_set(self) -> BTreeSet<BTreeSet<Label>> ;
 }
 
-impl<Label: Ord + Copy> ZddTreeOps<Label> for Zdd<Label> {
+impl<Label: Ord + Clone> ZddTreeOps<Label> for Zdd<Label> {
   fn is_zero(& self) -> bool { self.top() == Err(false) }
   fn is_one(& self) -> bool { self.top() == Err(true) }
   fn has_one(& self) -> bool {
@@ -103,10 +104,10 @@ impl<Label: Ord + Copy> ZddTreeOps<Label> for Zdd<Label> {
       // Only one recursive call if ZDD is well-formed.
       & HasOne(ref kid) => match kid.get() {
         & Zero => Err(true),
-        & Node(ref lbl, _, _) => Ok(* lbl),
+        & Node(ref lbl, _, _) => Ok(lbl.clone()),
         _ => panic!("[top] ZDD is ill-formed"),
       },
-      & Node(ref lbl, _, _) => Ok(* lbl),
+      & Node(ref lbl, _, _) => Ok(lbl.clone()),
     }
   }
 
@@ -131,7 +132,7 @@ impl<Label: Ord + Copy> ZddTreeOps<Label> for Zdd<Label> {
       zdd = match zdd.get() {
         & Node(ref top, ref lft, ref rgt) => {
           let mut rgt_set = set.clone() ;
-          rgt_set.insert(* top) ;
+          rgt_set.insert(top.clone()) ;
           path.push((rgt.clone(), rgt_set)) ;
           lft.clone()
         },

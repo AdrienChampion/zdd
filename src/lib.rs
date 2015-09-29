@@ -1,3 +1,14 @@
+#![doc = "
+A ZDD library, based on the paper by [Shin-Ichi Minato][zdd paper].
+
+# Todo
+
+* constructor for factory to set the size of the caches and the consign
+* subset (Cached? Probably)
+
+[zdd paper]: http://link.springer.com/article/10.1007%2Fs100090100038 (Zero-suppressed BDDs and their applications)
+"]
+
 #[macro_use]
 extern crate hashconsing ;
 
@@ -9,29 +20,42 @@ use self::ZddTree::* ;
 mod print ;
 pub use print::ZddPrint ;
 
-mod cache ;
-
 mod zip ;
 
 mod factory ;
 pub use factory::Factory ;
 
 /// A hash consed ZDD.
-hash_cons!{ pub Zdd<Label> for ZddTree<Label> }
+pub type Zdd<Label> = ::std::rc::Rc<
+  hashconsing::HashConsed<ZddTree<Label>>
+> ;
 
-/**
-A ZDD is either
-* a node with a label and a left and a right hash consed subtree,
-* the one terminal, the set containing only the null combination,
-* the zero terminal, the empty set.
+/// A ZDD factory can create nodes.
+trait FactoryTrait<Label> {
+  /// Creates a hash consed ZDD from a label and two kids.
+  fn mk_node(
+    & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
+  ) -> Zdd<Label> ;
+}
 
-Now, we actually implement the version with the *0-element edges* that indicate
-a path contains the null combination. So we don't have the one terminal.
+/** Actual ZDD enum type.
+
+Usually a ZDD is either:
+
+* a **node** with a label and a left and a right hash consed subtree,
+* the **one** terminal, the set containing only the null combination,
+* the **zero** terminal, the empty set.
+
+However we use *0-element edges* that indicate a path contains the null
+combination. So there's no **one** terminal.
 */
 #[derive(PartialEq, Hash)]
 pub enum ZddTree<Label> {
+  /// A node with a label and two kids.
   Node(Label, Zdd<Label>, Zdd<Label>),
+  /// Indicates the underlying contains the empty combination.
   HasOne(Zdd<Label>),
+  /// The empty set.
   Zero,
 }
 
@@ -45,11 +69,18 @@ impl<Label: Eq> Eq for ZddTree<Label> {}
 /// Basic operations on ZDD.
 pub trait ZddTreeOps<Label> {
 
+  /// Returns true iff the ZDD is *zero*.
+  #[inline(always)]
+  fn is_zero(& self) -> bool ;
+  /// Returns true iff the ZDD is *one*.
+  #[inline(always)]
+  fn is_one(& self) -> bool ;
   /// Returns true for all ZDDs containing the empty combination.
+  #[inline(always)]
   fn has_one(& self) -> bool ;
 
   /// Returns the top label if the ZDD is a node, an error of `true` if the
-  /// ZDD is `One` and `false` if it is `Zero`.
+  /// ZDD is *one* and `false` if it is *zero*.
   #[inline(always)]
   fn top(& self) -> Result<Label,bool> ;
 
@@ -61,6 +92,8 @@ pub trait ZddTreeOps<Label> {
 }
 
 impl<Label: Ord + Copy> ZddTreeOps<Label> for Zdd<Label> {
+  fn is_zero(& self) -> bool { self.top() == Err(false) }
+  fn is_one(& self) -> bool { self.top() == Err(true) }
   fn has_one(& self) -> bool {
     match self.get() { & HasOne(_) => true, _ => false }
   }
@@ -118,4 +151,5 @@ impl<Label: Ord + Copy> ZddTreeOps<Label> for Zdd<Label> {
     }
   }
 }
+
 

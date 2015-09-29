@@ -2,6 +2,17 @@
 name = "zdd"
 version = "0.1.0"
 authors = ["Adrien Champion <adrien.champion@email.com>"]
+description = "A Zero-suppressed BDD library."
+documentation = "http://adrienchampion.bitbucket.org/zdd/zdd/"
+homepage = "https://bitbucket.org/AdrienChampion/zdd/"
+repository = "https://bitbucket.org/AdrienChampion/zdd/src"
+readme = "README.md"
+keywords = ["ZDD", "BDD"]
+license = "MIT/Apache-2.0"
+
+[[bin]]
+name = "zdd_bin"
+doc = false
 
 [dependencies]
 rand = "0.3.11"

@@ -6,11 +6,18 @@ use zdd::* ;
 fn print_and_wtf(
   zdd: & Zdd<& 'static str>, id: usize, name: & 'static str, dir: & 'static str
 ) {
+  use std::fs::OpenOptions ;
   println!("----------------------------") ;
   println!("\n> [{:>3}] {}", id, name) ;
   zdd.print("".to_string()) ;
   println!("----------------------------") ;
-  zdd.graph_to_file(& format!("{}/g_{:0>3}_{}", dir, id, name)).unwrap() ;
+  let file = format!("{}/g_{:0>3}_{}.gv", dir, id, name) ;
+  match OpenOptions::new().write(true).create(true).truncate(true).open(
+    & file
+  ) {
+    Ok(mut wrt) => zdd.write_as_gv(& mut wrt).unwrap(),
+    Err(e) => panic!("{}", e),
+  }
 }
 
 pub fn run() {

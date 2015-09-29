@@ -2,6 +2,7 @@ extern crate zdd ;
 extern crate rand ;
 
 use std::collections::BTreeSet ;
+use std::fs::OpenOptions ;
 
 use zdd::ZddTreeOps ;
 use zdd::ZddPrint ;
@@ -276,7 +277,8 @@ fn minus(
   (res_zdd, res_sset)
 }
 
-fn run(factory: & mut Factory, u_bound: usize) {
+fn run(factory: & mut Factory, u_bound: usize, max: usize) -> usize {
+  let mut max = max ;
   let mut rng = StdRng::new().unwrap() ;
   let mut vec = vec![
     (factory.zero(), set_zero()),
@@ -307,10 +309,10 @@ fn run(factory: & mut Factory, u_bound: usize) {
         let index = usize::rand(& mut rng) % (vec.len()) ;
         let (ref rhs_zdd, ref rhs_sset) = vec[index] ;
         match f {
-          f if f < 0.66f64 => union(
+          f if f < 0.80f64 => union(
             factory, lhs_zdd, rhs_zdd, lhs_sset, rhs_sset
           ),
-          f if f < 0.83f64 => inter(
+          f if f < 0.90f64 => inter(
             factory, lhs_zdd, rhs_zdd, lhs_sset, rhs_sset
           ),
           _ => minus(
@@ -319,15 +321,26 @@ fn run(factory: & mut Factory, u_bound: usize) {
         }
       }
     } ;
+    let count = factory.count(& res.0) ;
+    if count > max {
+      match OpenOptions::new().write(true).create(true).truncate(true).open(
+        "graph"
+      ) {
+        Ok(mut wrt) => res.0.write_as_gv(& mut wrt).unwrap(),
+        Err(e) => panic!("{}", e),
+      }
+      max = count
+    } ;
     vec.push(res)
-  }
+  } ;
+  max
 }
 
 #[test]
 fn thirteen_times_100() {
   let mut factory = Factory::mk() ;
   for _ in 0..13 {
-    run(& mut factory, 100)
+    run(& mut factory, 100, 100) ;
   }
 }
 
@@ -335,14 +348,15 @@ fn thirteen_times_100() {
 fn seven_times_10000() {
   let mut factory = Factory::mk() ;
   for _ in 0..7 {
-    run(& mut factory, 10000)
+    run(& mut factory, 10000, 100) ;
   }
 }
 
 #[test]
 fn five_times_1000000() {
   let mut factory = Factory::mk() ;
+  let mut max = 0 ;
   for _ in 0..5 {
-    run(& mut factory, 1000000)
+    max = run(& mut factory, 1000000, max)
   }
 }

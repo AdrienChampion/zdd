@@ -6,17 +6,17 @@ use std::io ;
 use ::{ Zdd, ZddTreeOps } ;
 use ::ZddTree::* ;
 
-/// Printing-related stuff for ZDDs.
+/// Printing and logging to graphviz.
 pub trait ZddPrint<Label> {
   /// Pretty prints a ZDD with a prefix.
   fn print(& self, String) ;
-  /// Print a ZDD as a graphviz graph to a file.
-  fn graph_to_file(& self, & str) -> io::Result<()> ;
+  /// Logs a ZDD as graphviz to a `Write`.
+  fn write_as_gv(& self, & mut io::Write) -> io::Result<()> ;
 }
 
 /// Prints a ZDD as a graphviz graph to a `Write`.
 fn graph_print<Label: fmt::Display + Ord + Copy>(
-  fmt: & mut io::Write,
+  wrt: & mut io::Write,
   zdd: & Zdd<Label>,
   root: & 'static str,
   zero: & 'static str
@@ -33,7 +33,7 @@ fn graph_print<Label: fmt::Display + Ord + Copy>(
       match zdd.get() {
         & Zero => try!(
           write!(
-            fmt, "  {} -> {} [{}{}] ;\n", parent, zero, edge_lbl, style
+            wrt, "  {} -> {} [{}{}] ;\n", parent, zero, edge_lbl, style
           )
         ),
         & HasOne(ref kid) => to_do.push(
@@ -41,10 +41,10 @@ fn graph_print<Label: fmt::Display + Ord + Copy>(
         ),
         & Node(ref lbl, ref left, ref right) => {
           let name = zdd.hkey().to_string() ;
-          try!(write!(fmt, "  {} [label=\"{}\"] ; \n", name, lbl)) ;
+          try!(write!(wrt, "  {} [label=\"{}\"] ; \n", name, lbl)) ;
           try!(
             write!(
-              fmt, "  {} -> {} [{}{}] ;\n",
+              wrt, "  {} -> {} [{}{}] ;\n",
               parent, name, edge_lbl, style
             )
           ) ;
@@ -82,46 +82,28 @@ impl<Label: fmt::Display + Ord + Copy> ZddPrint<Label> for Zdd<Label> {
     println!("{}}}", pref)
   }
 
-  fn graph_to_file(& self, file: & str) -> io::Result<()> {
-    use std::fs::{ OpenOptions } ;
-    use std::io::Write ;
-    use std::process::Command ;
+  fn write_as_gv(& self, wrt: & mut io::Write) -> io::Result<()> {
     let root = "root_of_the_zdd" ;
     let zero = "zero_of_the_zdd" ;
-    match OpenOptions::new().write(true).create(true).truncate(true).open(
-      format!("{}.gv", file)
-    ) {
-      Ok(mut f) => {
-        let fmt = & mut f ;
-        try!( write!(fmt, "digraph {{\n\n") ) ;
-        try!( write!(fmt, "  graph [bgcolor=black margin=0.0] ;\n") ) ;
-        try!( write!(fmt, "  node [style=invisible] ; {} ;\n\n", root) ) ;
-        try!( write!(fmt,
-          "  node [\
-              style=filled \
-              fillcolor=black \
-              fontcolor=\"#1e90ff\" \
-              color=\"#666666\"\
-          ] ;\n"
-        ) ) ;
-        try!( write!(fmt,
-          "  edge [color=\"#1e90ff\" fontcolor=\"#222222\"] ;\n\n"
-        ) ) ;
-        try!( write!(fmt,
-          "  node [shape=doublecircle] ; {} [label=\"{{}}\"] ;\n", zero
-        ) ) ;
-        try!( write!(fmt, "  node [shape=circle] ;\n") ) ;
-        try!( graph_print(fmt, self, root, zero) ) ;
-        try!( write!(fmt, "}}\n") ) ;
-        try!( fmt.flush() ) ;
-      },
-      Err(e) => panic!("{}", e),
-    }
-    let _ = Command::new("dot").arg("-Tpdf").arg("-o").arg(
-      format!("{}.pdf", file)
-    ).arg(
-      format!("{}.gv", file)
-    ).output().unwrap() ;
-    Ok(())
+    try!( write!(wrt, "digraph {{\n\n") ) ;
+    try!( write!(wrt, "  graph [bgcolor=black margin=0.0] ;\n") ) ;
+    try!( write!(wrt, "  node [style=invisible] ; {} ;\n\n", root) ) ;
+    try!( write!(wrt,
+      "  node [\
+          style=filled \
+          fillcolor=black \
+          fontcolor=\"#1e90ff\" \
+          color=\"#666666\"\
+      ] ;\n"
+    ) ) ;
+    try!( write!(wrt,
+      "  edge [color=\"#1e90ff\" fontcolor=\"#222222\"] ;\n\n"
+    ) ) ;
+    try!( write!(wrt,
+      "  node [shape=doublecircle] ; {} [label=\"{{}}\"] ;\n", zero
+    ) ) ;
+    try!( write!(wrt, "  node [shape=circle] ;\n") ) ;
+    try!( graph_print(wrt, self, root, zero) ) ;
+    write!(wrt, "}}\n")
   }
 }

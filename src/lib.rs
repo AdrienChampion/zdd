@@ -20,6 +20,7 @@ use self::ZddTree::* ;
 mod print ;
 pub use print::ZddPrint ;
 
+#[macro_use]
 mod zip ;
 
 mod factory ;

@@ -1,4 +1,4 @@
-use ::{ Zdd, FactoryTrait } ;
+use ::Zdd ;
 
 /// ZDD are hashed to `u64`.
 pub type HKey = u64 ;
@@ -16,30 +16,6 @@ pub enum Res<D, NY> {
   NYet(NY)
 }
 
-
-pub enum UnZipStep<Info, Label, Terminal> {
-  Lft(Info, Zdd<Label>),
-  Rgt(Info, Terminal),
-}
-
-pub type LabelUnZipStep<Label> = UnZipStep< Label, Label, Zdd<Label> > ;
-pub type CountUnZipStep<Label> = UnZipStep< (), Label, usize > ;
-
-pub enum BinZipStep<Info, Label> {
-  Lft(Info, Zdd<Label>, Zdd<Label>),
-  TLft(Info, Zdd<Label>),
-  Rgt(Info, Zdd<Label>),
-}
-
-pub type LabelBinZipStep<Label> = BinZipStep<Label, Label> ;
-
-
-
-trait ZipHasLabel<Label> {
-  #[inline(always)]
-  fn label(& self) -> & Label ;
-}
-
 trait ZipHasVec<Data> {
   #[inline(always)]
   fn push(& mut self, Data) ;
@@ -47,234 +23,198 @@ trait ZipHasVec<Data> {
   fn pop(& mut self) -> Option<Data> ;
 }
 
-
 macro_rules! mk_zip {
-  ($id:ident< $($ty:ident),+ > {
-    lbl : $i_ty:ty , Vec<$($v_id:ident : $v_ty:ty),+>
-  } fn $fun:ident) => (
-    pub struct $id<$($ty),+> {
-      lbl: $i_ty,
-      vec: Vec<( $($v_ty),+ )>,
+  ($arity:ident
+    $id:ident< $($t_param:ident),+ > of (
+      $key:ty, $lbl:ty, $info:ty, $data:ty
+    ) by $fun:ident
+  ) => (
+    pub struct $id<$($t_param),+> {
+      zip: Vec<$arity::Step<$key, $lbl, $info, $data>>,
     }
-    impl<$($ty),+> $id<$($ty),+> {
-      fn mk(lbl: $i_ty) -> Self {
-        $id { lbl: lbl, vec: vec![] }
+    pub fn $fun<$($t_param),+>() -> $id<$($t_param),+> { $id { zip: vec![] } }
+    impl<$($t_param),+> $id<$($t_param),+> {
+      #[inline(always)]
+      pub fn push(& mut self, step: $arity::Step<$key, $lbl, $info, $data>) {
+        self.zip.push(step)
       }
-      mk_zip!{ rec fn vec<$($v_id: $v_ty),+> }
     }
-    impl<$($ty),+> ZipHasLabel<$i_ty> for $id<$($ty),+> {
-      mk_zip!{ rec fn label $i_ty }
-    }
-    impl<$($ty),+> ZipHasVec<($($v_ty),+)> for $id<$($ty),+> {
-      mk_zip!{ rec impl fn vec<$($v_ty),+> }
-    }
-    pub fn $fun<$($ty),+>(lbl: $i_ty) -> $id<$($ty),+> { $id::mk(lbl) }
-  ) ;
-  ($id:ident< $($ty:ident),+ > {
-    Vec<$($v_id:ident : $v_ty:ty),+>
-  } fn $fun:ident) => (
-    pub struct $id<$($ty),+> {
-      vec: Vec<( $($v_ty),+ )>,
-    }
-    impl<$($ty),+> $id<$($ty),+> {
-      fn mk() -> Self {
-        $id { vec: vec![] }
+    impl<$($t_param),+> ZipHasVec<
+      $arity::Step<$key, $lbl, $info, $data>
+    > for $id<$($t_param),+> {
+      #[inline(always)]
+      fn push(& mut self, step: $arity::Step<$key, $lbl, $info, $data>) {
+        self.zip.push(step)
       }
-      mk_zip!{ rec fn vec<$($v_id: $v_ty),+> }
+      #[inline(always)]
+      fn pop(& mut self) -> Option<$arity::Step<$key, $lbl, $info, $data>> {
+        self.zip.pop()
+      }
     }
-    impl<$($ty),+> ZipHasVec<($($v_ty),+)> for $id<$($ty),+> {
-      mk_zip!{ rec impl fn vec<$($v_ty),+> }
+  ) ;
+}
+
+mk_zip!{
+  unary Count<Label> of (HKey, Label, (), usize) by nu_count
+}
+
+mk_zip!{
+  unary Offset<Label> of (
+    (HKey,Label), Label, Label, Zdd<Label>
+  ) by nu_offset
+}
+mk_zip!{
+  unary Onset<Label> of (
+    (HKey,Label), Label, Label, Zdd<Label>
+  ) by nu_onset
+}
+mk_zip!{
+  unary Change<Label> of (
+    (HKey,Label), Label, Label, Zdd<Label>
+  ) by nu_change
+}
+
+mk_zip!{
+  binary Union<Label> of ((HKey, HKey), Label, Label, Zdd<Label>) by nu_union
+}
+mk_zip!{
+  binary Inter<Label> of ((HKey, HKey), Label, Label, Zdd<Label>) by nu_inter
+}
+mk_zip!{
+  binary Minus<Label> of ((HKey, HKey), Label, Label, Zdd<Label>) by nu_minus
+}
+
+#[macro_export]
+macro_rules! zip_up {
+  ($has_zip:ident > $zip:ident > $data:expr) => (
+    {
+      use $crate::zip::unary::Zip ;
+      let data = $data ;
+      match $has_zip.zip(data, & mut $zip) {
+        $crate::zip::Res::NYet(rgt) => rgt,
+        $crate::zip::Res::Done(data) => return data,
+      }
     }
-    pub fn $fun<$($ty),+>() -> $id<$($ty),+> { $id::mk() }
   ) ;
-  (rec fn label $i_ty:ty) => (
-    fn label(& self) -> & $i_ty { & self.lbl }
+  ($has_zip:ident >> $zip:ident > $data:expr) => (
+    {
+      use $crate::zip::binary::Zip ;
+      let data = $data ;
+      match $has_zip.zip(data, & mut $zip) {
+        $crate::zip::Res::NYet(rgt) => rgt,
+        $crate::zip::Res::Done(data) => return data,
+      }
+    }
   ) ;
-  (rec fn vec<$($id:ident: $ty:ty),+>) => (
+}
+
+pub mod unary {
+  use ::Zdd ;
+  pub use self::Step::* ;
+  pub use super::Res::* ;
+  pub use super::HKey ;
+
+  pub enum Step<Key, Label, Info, Data> {
+    Lft(Key, Info, Zdd<Label>),
+    Rgt(Key, Info, Data),
+  }
+
+  pub trait Zip<
+    Key, Label, Info, Data,
+    Zip: super::ZipHasVec<Step<Key, Label, Info, Data>>
+  > {
+    /// Insert into the cache corresponding to `Zip`.
     #[inline(always)]
-    pub fn push(& mut self, $($id: $ty),+) {
-      self.vec.push(($($id),+))
-    }
-  ) ;
-  (rec impl fn vec<$($ty:ty),+>) => (
-    fn push(& mut self, e: ($($ty),+)) {
-      self.vec.push(e)
-    }
-    fn pop(& mut self) -> Option<($($ty),+)> {
-      self.vec.pop()
-    }
-  ) ;
-}
+    fn cache_insert(& mut self, Key, & Data) ;
 
-mk_zip!{
-  OffsetZip<Label> {
-    lbl: Label,
-    Vec< key: HKey, step: LabelUnZipStep<Label> >
-  } fn offset
-}
+    /// Combines data, used in terminal steps.
+    #[inline(always)]
+    fn combine(& mut self, Info, Data, Data) -> Data ;
 
-mk_zip!{
-  OnsetZip<Label> {
-    lbl: Label,
-    Vec< key: HKey, step: LabelUnZipStep<Label> >
-  } fn onset
-}
+    fn zip(
+      & mut self, mut data: Data, zip: & mut Zip
+    ) -> super::Res<Data,Zdd<Label>> {
+      loop {
+        data = match zip.pop() {
+          // Can't zip up, done.
+          None => return Done(data),
 
-mk_zip!{
-  ChangeZip<Label> {
-    lbl: Label,
-    Vec< key: HKey, step: LabelUnZipStep<Label> >
-  } fn change
-}
+          // A right branch hasn't been explored yet.
+          Some( Lft(key, info, rgt) ) => {
+            zip.push( Rgt(key, info, data) ) ;
+            return NYet(rgt)
+          },
 
-mk_zip!{
-  CountZip2<Label> {
-    Vec< key: HKey, step: CountUnZipStep<Label> >
-  } fn count
-}
-
-mk_zip!{
-  UnionZip<Label> {
-    Vec< l_key: HKey, r_key: HKey, step: LabelBinZipStep<Label> >
-  } fn union
-}
-
-mk_zip!{
-  InterZip<Label> {
-    Vec< l_key: HKey, r_key: HKey, step: LabelBinZipStep<Label> >
-  } fn inter
-}
-
-mk_zip!{
-  MinusZip<Label> {
-    Vec< l_key: HKey, r_key: HKey, step: LabelBinZipStep<Label> >
-  } fn minus
-}
-
-
-pub trait UnaryLabelZipper<
-  Label, Zip: ZipHasLabel<Label> + ZipHasVec<(HKey, LabelUnZipStep<Label>)>
-> : FactoryTrait<Label> {
-  /// Insert into the cache corresponding to `Zip`.
-  #[inline(always)]
-  fn cache_insert(& mut self, HKey, & Label, & Zdd<Label>) ;
-
-  /// Zips on `zip`. Returns a `NYet` of the next ZDD to explore if any,
-  /// or `Done` of the top ZDD.
-  /// Updates the cache as it goes.
-  fn zip(
-    & mut self, mut zdd: Zdd<Label>, zip: & mut Zip
-  ) -> Res<Zdd<Label>, Zdd<Label>> {
-    use self::UnZipStep::* ;
-    use self::Res::* ;
-    loop {
-      zdd = match zip.pop() {
-        // Can't zip up, done.
-        None => return Done(zdd),
-
-        // A right branch hasn't been explored yet.
-        Some( (key, Lft(lbl, rgt)) ) => {
-          zip.push( (key, Rgt( lbl, zdd)) ) ;
-          return NYet(rgt)
-        },
-
-        // We were in a right branch, going up.
-        Some( (key, Rgt(lbl, lft)) ) => {
-          let zdd = self.mk_node(lbl, lft, zdd) ;
-          self.cache_insert(key, zip.label(), & zdd) ;
-          zdd
-        },
+          // We were in a right branch, going up.
+          Some( Rgt(key, info, l_data) ) => {
+            // Combine data.
+            let data = self.combine(info, l_data, data) ;
+            self.cache_insert(key, & data) ;
+            data
+          },
+        }
       }
     }
   }
 }
 
-pub trait UnaryCountZipper<
-  Label, Zip: ZipHasVec<(HKey, CountUnZipStep<Label>)>
-> : FactoryTrait<Label> {
-  /// Insert into the cache corresponding to `Zip`.
-  #[inline(always)]
-  fn cache_insert(& mut self, HKey, usize) ;
+pub mod binary {
+  use ::Zdd ;
+  pub use self::Step::* ;
+  pub use super::Res::* ;
 
-  /// Zips on `zip`. Returns a `NYet` of the next ZDD to explore if any,
-  /// or `Done` of the top count.
-  /// Updates the cache as it goes.
-  ///
-  /// Whenever it goes up, the current count and the one retrieved from the
-  /// zip are **sumed**. Could have the operation has a parameter but I'm not
-  /// sure it would be of any use at this point.
-  fn zip(
-    & mut self, mut count: usize, zip: & mut Zip
-  ) -> Res<usize, Zdd<Label>> {
-    use self::UnZipStep::* ;
-    use self::Res::* ;
-    loop {
-      count = match zip.pop() {
-        // Can't zip up, done.
-        None => return Done(count),
+  pub enum Step<Key, Label, Info, Data> {
+    Lft(Key, Info, Zdd<Label>, Zdd<Label>),
+    TLft(Key, Info, Data),
+    Rgt(Key, Info, Data),
+  }
 
-        // A right branch hasn't been explored yet.
-        Some( (key, Lft((), rgt)) ) => {
-          zip.push( (key, Rgt( (), count)) ) ;
-          return NYet(rgt)
-        },
+  pub trait Zip<
+    Key, Label, Info, Data,
+    Zip: super::ZipHasVec<Step<Key, Label, Info, Data>>
+  > {
+    /// Insert into the cache corresponding to `Zip`.
+    #[inline(always)]
+    fn cache_insert(& mut self, Key, & Data) ;
 
-        // We were in a right branch, going up.
-        Some( (key, Rgt((), l_count)) ) => {
-          let count = count + l_count ;
-          self.cache_insert(key, count) ;
-          count
-        },
+    /// Combines data, used in terminal steps.
+    #[inline(always)]
+    fn combine(& mut self, Info, Data, Data) -> Data ;
+
+    fn zip(
+      & mut self, mut data: Data, zip: & mut Zip
+    ) -> super::Res<Data,(Zdd<Label>, Zdd<Label>)> {
+      loop {
+        data = match zip.pop() {
+          // Can't zip up, done.
+          None => return Done(data),
+
+          // Some right branches haven't been explored yet.
+          Some( Lft(key, info, l_rgt, r_rgt) ) => {
+            zip.push( Rgt(key, info, data) ) ;
+            return NYet((l_rgt, r_rgt))
+          },
+
+          // We were in a terminal left branch, going up.
+          Some( TLft(key, info, r_data) ) => {
+            // Combine data.
+            let data = self.combine(info, data, r_data) ;
+            self.cache_insert(key, & data) ;
+            data
+          },
+
+          // We were in a right branch, going up.
+          Some( Rgt(key, info, l_data) ) => {
+            // Combine data.
+            let data = self.combine(info, l_data, data) ;
+            self.cache_insert(key, & data) ;
+            data
+          },
+        }
       }
     }
   }
 }
 
-pub trait BinaryLabelZipper<
-  Label,
-  Zip: ZipHasVec<(HKey, HKey, LabelBinZipStep<Label>)>
-> : FactoryTrait<Label> {
-  /// Insert into the cache corresponding to `Zip`.
-  #[inline(always)]
-  fn cache_insert(& mut self, HKey, HKey, & Zdd<Label>) ;
-
-
-  /// Zips on `zip`. Returns a `NYet` of the two next ZDDs to explore if any,
-  /// or `Done` of the top ZDD.
-  /// Updates the cache as it goes.
-  fn zip(
-    & mut self, mut zdd: Zdd<Label>, zip: & mut Zip
-  ) -> Res<Zdd<Label>, (Zdd<Label>, Zdd<Label>)> {
-    use self::BinZipStep::* ;
-    use self::Res::* ;
-    loop {
-      zdd = match zip.pop() {
-        // Can't zip up, done.
-        None => return Done(zdd),
-
-        // Some right branches haven't been explored yet.
-        Some( (l_key, r_key, Lft(lbl, l_rgt, r_rgt)) ) => {
-          zip.push( (l_key, r_key, Rgt( lbl, zdd)) ) ;
-          return NYet((l_rgt, r_rgt))
-        },
-
-        // A right branch hasn't been explored yet, but we're at a terminal
-        // left step in the zipper. Going up.
-        Some( (l_key, r_key, TLft(lbl, rgt)) ) => {
-          let zdd = self.mk_node(lbl, zdd, rgt) ;
-          self.cache_insert(l_key, r_key, & zdd) ;
-          zdd
-        },
-
-        // We were in a right branch, going up.
-        Some( (l_key, r_key, Rgt(lbl, lft)) ) => {
-          let zdd = self.mk_node(lbl, lft, zdd) ;
-          self.cache_insert(l_key, r_key, & zdd) ;
-          zdd
-        },
-      }
-    }
-  }
-}
 
 

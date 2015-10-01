@@ -1,9 +1,10 @@
-use std::collections::{ HashMap, BTreeSet } ;
+use std::collections::{ HashMap, BTreeSet, HashSet } ;
+use std::iter::Iterator ;
 use std::cmp::Eq ;
 
 use hashconsing::* ;
 
-use ::{ FactoryTrait, ZddTree, Zdd, ZddTreeOps } ;
+use ::{ ZddTree, Zdd, ZddTreeOps } ;
 use ZddTree::* ;
 
 use zip ;
@@ -34,8 +35,8 @@ pub struct Factory<Label: Eq + Hash> {
 }
 
 
-impl<Label: Eq + Hash> FactoryTrait<Label> for Factory<Label> {
-  fn mk_node(
+impl<Label: Eq + Hash> Factory<Label> {
+  fn node(
     & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
     if rgt == self.zero {
@@ -88,7 +89,7 @@ impl<Label: Eq + Hash + Clone> zip::unary::Zip<
   fn combine(
     & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
-    self.mk_node(lbl, lft, rgt)
+    self.node(lbl, lft, rgt)
   }
 }
 
@@ -103,7 +104,7 @@ impl<Label: Eq + Hash + Clone> zip::unary::Zip<
   fn combine(
     & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
-    self.mk_node(lbl, lft, rgt)
+    self.node(lbl, lft, rgt)
   }
 }
 
@@ -118,7 +119,7 @@ impl<Label: Eq + Hash + Clone> zip::unary::Zip<
   fn combine(
     & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
-    self.mk_node(lbl, lft, rgt)
+    self.node(lbl, lft, rgt)
   }
 }
 
@@ -133,7 +134,7 @@ impl<Label: Eq + Hash + Clone> zip::binary::Zip<
   fn combine(
     & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
-    self.mk_node(lbl, lft, rgt)
+    self.node(lbl, lft, rgt)
   }
 }
 
@@ -148,7 +149,7 @@ impl<Label: Eq + Hash + Clone> zip::binary::Zip<
   fn combine(
     & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
-    self.mk_node(lbl, lft, rgt)
+    self.node(lbl, lft, rgt)
   }
 }
 
@@ -163,7 +164,7 @@ impl<Label: Eq + Hash + Clone> zip::binary::Zip<
   fn combine(
     & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
-    self.mk_node(lbl, lft, rgt)
+    self.node(lbl, lft, rgt)
   }
 }
 
@@ -181,7 +182,7 @@ impl<Label: Eq + Hash + Clone> zip::binary::Zip<
 }
 
 
-impl<Label: Ord + Eq + Hash + Clone + ::std::fmt::Display> Factory<Label> {
+impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
 
   /// Creates a new factory.
   pub fn mk() -> Self {
@@ -224,14 +225,6 @@ impl<Label: Ord + Eq + Hash + Clone + ::std::fmt::Display> Factory<Label> {
     } else {
       self.consign.mk(HasOne(kid))
     }
-  }
-
-  /// Creates a new node.
-  #[inline(always)]
-  pub fn node(
-    & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
-  ) -> Zdd<Label> {
-    (self as & mut FactoryTrait<Label>).mk_node(lbl, lft, rgt)
   }
 
   /// Removes the empty combination from a ZDD if it's there.
@@ -298,6 +291,28 @@ impl<Label: Ord + Eq + Hash + Clone + ::std::fmt::Display> Factory<Label> {
       },
       & Zero => Err(false),
     }
+  }
+
+  /// Creates a ZDD containing the combination corresponding to an iterator.
+  /// **Assumes each elements appears only once.**
+  fn of_iterator<'a, T: Iterator<Item = & 'a Label>>(
+    & mut self, iter: T
+  ) -> Zdd<Label> where Label: 'a {
+    let mut zdd = self.one() ;
+    for e in iter {
+      zdd = self.change(& zdd, & e) ;
+    } ;
+    zdd
+  }
+
+  /// Creates a ZDD containing the combination corresponding to a `BTreeSet`.
+  pub fn of_btree_set(& mut self, set: & BTreeSet<Label>) -> Zdd<Label> {
+    self.of_iterator(set.iter())
+  }
+
+  /// Creates a ZDD containing the combination corresponding to a `HashSet`.
+  pub fn of_hashset(& mut self, set: & HashSet<Label>) -> Zdd<Label> {
+    self.of_iterator(set.iter())
   }
 
   /// Queries a unary cache.

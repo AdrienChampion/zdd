@@ -34,14 +34,6 @@ pub type Zdd<Label> = ::std::rc::Rc<
   hashconsing::HashConsed<ZddTree<Label>>
 > ;
 
-/// A ZDD factory can create nodes.
-trait FactoryTrait<Label> {
-  /// Creates a hash consed ZDD from a label and two kids.
-  fn mk_node(
-    & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
-  ) -> Zdd<Label> ;
-}
-
 /** Actual ZDD enum type.
 
 Usually a ZDD is either:

@@ -15,7 +15,7 @@ pub trait ZddPrint<Label> {
 }
 
 /// Prints a ZDD as a graphviz graph to a `Write`.
-fn graph_print<Label: fmt::Display + Ord + Copy>(
+fn graph_print<Label: fmt::Display + Ord>(
   wrt: & mut io::Write,
   zdd: & Zdd<Label>,
   root: & 'static str,
@@ -65,7 +65,7 @@ fn graph_print<Label: fmt::Display + Ord + Copy>(
   }
 }
 
-impl<Label: fmt::Display + Ord + Copy> ZddPrint<Label> for Zdd<Label> {
+impl<Label: fmt::Display + Ord + Clone> ZddPrint<Label> for Zdd<Label> {
 
   fn print(& self, pref: String) {
     println!("{}{{", pref) ;

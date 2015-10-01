@@ -2,7 +2,7 @@ extern crate zdd ;
 extern crate rand ;
 
 use std::collections::BTreeSet ;
-use std::fs::OpenOptions ;
+// use std::fs::OpenOptions ;
 
 use zdd::ZddTreeOps ;
 use zdd::ZddPrint ;
@@ -215,6 +215,8 @@ fn union(
     sset_print(& res_sset, "| ".to_string()) ;
     panic!("{} | result mismatch", name)
   } ;
+  assert!(f.subset(lhs_zdd, & res_zdd)) ;
+  assert!(f.subset(rhs_zdd, & res_zdd)) ;
   (res_zdd, res_sset)
 }
 
@@ -245,6 +247,8 @@ fn inter(
     sset_print(& res_sset, "| ".to_string()) ;
     panic!("{} | result mismatch", name)
   } ;
+  assert!(f.subset(& res_zdd, lhs_zdd)) ;
+  assert!(f.subset(& res_zdd, rhs_zdd)) ;
   (res_zdd, res_sset)
 }
 
@@ -275,11 +279,13 @@ fn minus(
     sset_print(& res_sset, "| ".to_string()) ;
     panic!("{} | result mismatch", name)
   } ;
+  assert!(f.subset(& res_zdd, lhs_zdd)) ;
+  assert!(rhs_zdd.is_zero() || ! f.subset(rhs_zdd, & res_zdd)) ;
   (res_zdd, res_sset)
 }
 
 fn run(factory: & mut Factory, u_bound: usize, max: usize) -> usize {
-  let mut max = max ;
+  // let mut max = max ;
   let mut rng = StdRng::new().unwrap() ;
   let mut vec = vec![
     (factory.zero(), set_zero()),
@@ -322,16 +328,18 @@ fn run(factory: & mut Factory, u_bound: usize, max: usize) -> usize {
         }
       }
     } ;
-    let count = factory.count(& res.0) ;
-    if count > max {
-      match OpenOptions::new().write(true).create(true).truncate(true).open(
-        "graph"
-      ) {
-        Ok(mut wrt) => res.0.write_as_gv(& mut wrt).unwrap(),
-        Err(e) => panic!("{}", e),
-      }
-      max = count
-    } ;
+    // Testing subset.
+
+    // let count = factory.count(& res.0) ;
+    // if count > max {
+    //   match OpenOptions::new().write(true).create(true).truncate(true).open(
+    //     "graph"
+    //   ) {
+    //     Ok(mut wrt) => res.0.write_as_gv(& mut wrt).unwrap(),
+    //     Err(e) => panic!("{}", e),
+    //   }
+    //   max = count
+    // } ;
     vec.push(res)
   } ;
   max
@@ -354,10 +362,10 @@ fn seven_times_10000() {
 }
 
 #[test]
-fn five_times_1000000() {
+fn three_times_1000000() {
   let mut factory = FBuilder::mk().len(1000000).build() ;
   let mut max = 0 ;
-  for _ in 0..5 {
+  for _ in 0..3 {
     max = run(& mut factory, 1000000, max)
   }
 }

@@ -1,4 +1,4 @@
-use std::collections::HashMap ;
+use std::collections::{ HashMap, BTreeSet } ;
 use std::cmp::Eq ;
 
 use hashconsing::* ;
@@ -12,7 +12,7 @@ use zip::{ HKey, UnaryKey, BinaryKey } ;
 /** A ZDD factory.
 
 Wraps a hash consing table. Functions `count`, `offset`, `onset`, `change`,
-`union`, `inter` and `minus` are cached.
+`union`, `inter`, `minus` and `subset` are cached.
 */
 pub struct Factory<Label: Eq + Hash> {
   consign: HashConsign<ZddTree<Label>>,
@@ -29,6 +29,8 @@ pub struct Factory<Label: Eq + Hash> {
   union_cache: HashMap<BinaryKey, Zdd<Label>>,
   inter_cache: HashMap<BinaryKey, Zdd<Label>>,
   minus_cache: HashMap<BinaryKey, Zdd<Label>>,
+
+  subset_cache: HashMap<BinaryKey, bool>,
 }
 
 
@@ -90,6 +92,7 @@ impl<Label: Eq + Hash + Clone> zip::unary::Zip<
   }
 }
 
+
 impl<Label: Eq + Hash + Clone> zip::unary::Zip<
   (HKey, Label), Label, Label, Zdd<Label>, zip::Onset<Label>
 > for Factory<Label> {
@@ -103,6 +106,7 @@ impl<Label: Eq + Hash + Clone> zip::unary::Zip<
     self.mk_node(lbl, lft, rgt)
   }
 }
+
 
 impl<Label: Eq + Hash + Clone> zip::unary::Zip<
   (HKey, Label), Label, Label, Zdd<Label>, zip::Change<Label>
@@ -164,7 +168,20 @@ impl<Label: Eq + Hash + Clone> zip::binary::Zip<
 }
 
 
-impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
+impl<Label: Eq + Hash + Clone> zip::binary::Zip<
+  (HKey, HKey), Label, (), bool, zip::Subset<Label>
+> for Factory<Label> {
+  fn cache_insert(& mut self, key: (HKey, HKey), val: & bool) {
+    let _res = self.subset_cache.insert(key, * val) ;
+    cache_overwrite(_res, "subset")
+  }
+  fn combine(& mut self, _: (), lft: bool, rgt: bool) -> bool {
+    lft && rgt
+  }
+}
+
+
+impl<Label: Ord + Eq + Hash + Clone + ::std::fmt::Display> Factory<Label> {
 
   /// Creates a new factory.
   pub fn mk() -> Self {
@@ -186,56 +203,18 @@ impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
       union_cache: HashMap::new(),
       inter_cache: HashMap::new(),
       minus_cache: HashMap::new(),
+
+      subset_cache: HashMap::new(),
     }
   }
-
-  /// The size of the consign.
-  #[inline(always)]
-  pub fn consign_len(& self) -> usize { self.consign.len() }
-
-  /// The size of the `count` cache.
-  #[inline(always)]
-  pub fn count_cache_len(& self) -> usize { self.count_cache.len() }
-  /// The size of the `offset` cache.
-  #[inline(always)]
-  pub fn offset_cache_len(& self) -> usize { self.offset_cache.len() }
-  /// The size of the `onset` cache.
-  #[inline(always)]
-  pub fn onset_cache_len(& self) -> usize { self.onset_cache.len() }
-  /// The size of the `change` cache.
-  #[inline(always)]
-  pub fn change_cache_len(& self) -> usize { self.change_cache.len() }
-
-  /// The size of the `union` cache.
-  #[inline(always)]
-  pub fn union_cache_len(& self) -> usize { self.union_cache.len() }
-  /// The size of the `inter` cache.
-  #[inline(always)]
-  pub fn inter_cache_len(& self) -> usize { self.inter_cache.len() }
-  /// The size of the `minus` cache.
-  #[inline(always)]
-  pub fn minus_cache_len(& self) -> usize { self.minus_cache.len() }
 
   /// The *one* element.
   #[inline(always)]
   pub fn one(& self) -> Zdd<Label> { self.one.clone() }
+
   /// The *zero* element.
   #[inline(always)]
   pub fn zero(& self) -> Zdd<Label> { self.zero.clone() }
-
-  /// Returns true iff the zdd is the same as the *one* element stored in
-  /// the factory.
-  #[inline(always)]
-  pub fn is_one(& self, zdd: & Zdd<Label>) -> bool {
-    self.one.hkey() == zdd.hkey()
-  }
-
-  /// Returns true iff the zdd is the same as the *zero* element stored in
-  /// the factory.
-  #[inline(always)]
-  pub fn is_zero(& self, zdd: & Zdd<Label>) -> bool {
-    self.zero.hkey() == zdd.hkey()
-  }
 
   /// Adds the empty combination to a ZDD if it was not already there.
   #[inline(always)]
@@ -255,7 +234,7 @@ impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
     (self as & mut FactoryTrait<Label>).mk_node(lbl, lft, rgt)
   }
 
-  /// Removes the empty combination from a ZDD if it was there.
+  /// Removes the empty combination from a ZDD if it's there.
   #[inline(always)]
   pub fn rm_one(& mut self, zdd: & Zdd<Label>) -> Zdd<Label> {
     match zdd.get() {
@@ -369,11 +348,11 @@ impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
 
   /// Queries a binary cache.
   #[inline(always)]
-  fn binary_cache_get(
-    cache: & HashMap<BinaryKey, Zdd<Label>>,
+  fn binary_cache_get<T: Clone>(
+    cache: & HashMap<BinaryKey, T>,
     lhs: & Zdd<Label>,
     rhs: & Zdd<Label>
-  ) -> Option<Zdd<Label>> {
+  ) -> Option<T> {
     match cache.get( & (lhs.hkey(), rhs.hkey()) ) {
       None => None, Some(zdd) => Some(zdd.clone()),
     }
@@ -403,10 +382,18 @@ impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
     Factory::binary_cache_get(& self.minus_cache, lhs, rhs)
   }
 
+  /// Queries the subset cache.
+  #[inline(always)]
+  fn subset_cache_get(
+    & self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
+  ) -> Option<bool> {
+    Factory::binary_cache_get(& self.subset_cache, lhs, rhs)
+  }
+
   /// The number of combinations in a ZDD. Cached.
   pub fn count(& mut self, zdd: & Zdd<Label>) -> usize {
     use zip::unary::Step::Lft ;
-    let mut zip = zip::nu_count() ;
+    let mut zip = zip::count() ;
     let mut zdd = zdd.clone() ;
     loop {
       zdd = match zdd.top() {
@@ -434,7 +421,7 @@ impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
     & mut self, zdd: & Zdd<Label>, lbl: & Label
   ) -> Zdd<Label> {
     use zip::unary::Step::Lft ;
-    let mut zip = zip::nu_offset() ;
+    let mut zip = zip::offset() ;
     let mut zdd = zdd.clone() ;
     loop {
       zdd = match zdd.top() {
@@ -473,7 +460,7 @@ impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
     & mut self, zdd: & Zdd<Label>, lbl: & Label
   ) -> Zdd<Label> {
     use zip::unary::Step::Lft ;
-    let mut zip = zip::nu_onset() ;
+    let mut zip = zip::onset() ;
     let mut zdd = zdd.clone() ;
     loop {
       zdd = match zdd.top() {
@@ -511,7 +498,7 @@ impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
     & mut self, zdd: & Zdd<Label>, lbl: & Label
   ) -> Zdd<Label> {
     use zip::unary::Step::Lft ;
-    let mut zip = zip::nu_change() ;
+    let mut zip = zip::change() ;
     let mut zdd = zdd.clone() ;
     loop {
       zdd = match zdd.top() {
@@ -560,7 +547,7 @@ impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
     & mut self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
   ) -> Zdd<Label> {
     use zip::binary::Step::{ Lft, TLft } ;
-    let mut zip = zip::nu_union() ;
+    let mut zip = zip::union() ;
     let mut pair = (lhs.clone(), rhs.clone()) ;
     loop {
 
@@ -631,7 +618,7 @@ impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
     & mut self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
   ) -> Zdd<Label> {
     use zip::binary::Step::Lft ;
-    let mut zip = zip::nu_inter() ;
+    let mut zip = zip::inter() ;
     let mut pair = (lhs.clone(), rhs.clone()) ;
     loop {
       let (lhs, rhs) = pair ;
@@ -688,7 +675,7 @@ impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
     & mut self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
   ) -> Zdd<Label> {
     use zip::binary::Step::{ Lft, TLft } ;
-    let mut zip = zip::nu_minus() ;
+    let mut zip = zip::minus() ;
     let mut pair = (lhs.clone(), rhs.clone()) ;
     loop {
       let (lhs, rhs) = pair ;
@@ -746,6 +733,84 @@ impl<Label: Ord + Eq + Hash + Clone> Factory<Label> {
       } ;
     }
   }
+
+  /// Returns true iff `lhs` is a subset of `rhs`. Cached.
+  pub fn subset(& mut self, lhs: & Zdd<Label>, rhs: & Zdd<Label>) -> bool {
+    use zip::binary::Step::{ Lft, TLft } ;
+    let mut zip = zip::subset() ;
+    // More natural for me to reverse them.
+    let mut pair = (rhs.clone(), lhs.clone()) ;
+    loop {
+      let (lhs, rhs) = pair ;
+
+
+      pair = if lhs == rhs {
+        zip_up!(self >> zip > true)
+      } else {
+        match (lhs.top(), rhs.top()) {
+          (_, Err(false)) => zip_up!(self >> zip > true),
+          (Err(true), _) |
+          (Err(false), _) => zip_up!(self >> zip > false),
+          (_, Err(true)) => zip_up!(self >> zip > lhs.has_one()),
+          (Ok(l_top), Ok(r_top)) => match self.subset_cache_get(& lhs, & rhs) {
+            // Cache hit.
+            Some(res) => zip_up!(self >> zip > res),
+            // Not found.
+            None => {
+              let key = (lhs.hkey(), rhs.hkey()) ;
+              if l_top == r_top {
+                let (l_lft,l_rgt) = self.kids(& lhs).unwrap() ;
+                let (r_lft,r_rgt) = self.kids(& rhs).unwrap() ;
+                zip.push(Lft(key, (), l_rgt, r_rgt)) ;
+                (l_lft, r_lft)
+              } else {
+                if l_top < r_top {
+                  // lhs is above, going left.
+                  let l_lft = self.lft(& lhs).unwrap() ;
+                  zip.push(TLft(key, (), true)) ;
+                  (l_lft, rhs)
+                } else {
+                  // rhs is above, lhs cannot be a subset.
+                  zip_up!(self >> zip > false)
+                }
+              }
+            },
+          }
+        }
+      } ;
+    }
+  }
+
+  /// The size of the consign.
+  #[inline(always)]
+  pub fn consign_len(& self) -> usize { self.consign.len() }
+
+  /// The size of the `count` cache.
+  #[inline(always)]
+  pub fn count_cache_len(& self) -> usize { self.count_cache.len() }
+  /// The size of the `offset` cache.
+  #[inline(always)]
+  pub fn offset_cache_len(& self) -> usize { self.offset_cache.len() }
+  /// The size of the `onset` cache.
+  #[inline(always)]
+  pub fn onset_cache_len(& self) -> usize { self.onset_cache.len() }
+  /// The size of the `change` cache.
+  #[inline(always)]
+  pub fn change_cache_len(& self) -> usize { self.change_cache.len() }
+
+  /// The size of the `union` cache.
+  #[inline(always)]
+  pub fn union_cache_len(& self) -> usize { self.union_cache.len() }
+  /// The size of the `inter` cache.
+  #[inline(always)]
+  pub fn inter_cache_len(& self) -> usize { self.inter_cache.len() }
+  /// The size of the `minus` cache.
+  #[inline(always)]
+  pub fn minus_cache_len(& self) -> usize { self.minus_cache.len() }
+
+  /// The size of the `subset` cache.
+  #[inline(always)]
+  pub fn subset_cache_len(& self) -> usize { self.subset_cache.len() }
 }
 
 /** A factory for `Factory` to set the capacity of the consign and the caches.
@@ -788,6 +853,8 @@ pub struct FactoryBuilder {
   offset: usize, onset: usize, change: usize,
 
   union: usize, inter: usize, minus: usize,
+
+  subset: usize,
 }
 
 impl FactoryBuilder {
@@ -811,6 +878,8 @@ impl FactoryBuilder {
       union_cache: HashMap::with_capacity(self.union),
       inter_cache: HashMap::with_capacity(self.inter),
       minus_cache: HashMap::with_capacity(self.minus),
+
+      subset_cache: HashMap::with_capacity(self.subset),
     }
   }
 
@@ -824,6 +893,8 @@ impl FactoryBuilder {
       offset: 0, onset: 0, change: 0,
 
       union: 0, inter: 0, minus: 0,
+
+      subset: 0,
     }
   }
 
@@ -847,6 +918,7 @@ impl FactoryBuilder {
     self.union = l ;
     self.inter = l ;
     self.minus = l ;
+    self.subset = l ;
     self
   }
 
@@ -879,5 +951,10 @@ impl FactoryBuilder {
   /// Sets the capacity of the minus cache.
   pub fn minus_cache_len(mut self, l: usize) -> Self {
     self.minus = l ; self
+  }
+
+  /// Sets the capacity of the minus cache.
+  pub fn subset_cache_len(mut self, l: usize) -> Self {
+    self.subset = l ; self
   }
 }

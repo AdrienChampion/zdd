@@ -1,9 +1,11 @@
 #![doc = "
 A ZDD library, based on the paper by [Shin-Ichi Minato][zdd paper].
 
+ZDDs are hash consed so equality is constant time.
+All operations provided by `Factory` are cached.
+
 # Todo
 
-* constructor for factory to set the size of the caches and the consign
 * subset (Cached? Probably)
 
 [zdd paper]: http://link.springer.com/article/10.1007%2Fs100090100038 (Zero-suppressed BDDs and their applications)

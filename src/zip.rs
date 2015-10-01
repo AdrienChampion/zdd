@@ -16,7 +16,7 @@ pub enum Res<D, NY> {
   NYet(NY)
 }
 
-trait ZipHasVec<Data> {
+trait Zipper<Data> {
   #[inline(always)]
   fn push(& mut self, Data) ;
   #[inline(always)]
@@ -39,7 +39,7 @@ macro_rules! mk_zip {
         self.zip.push(step)
       }
     }
-    impl<$($t_param),+> ZipHasVec<
+    impl<$($t_param),+> Zipper<
       $arity::Step<$key, $lbl, $info, $data>
     > for $id<$($t_param),+> {
       #[inline(always)]
@@ -55,35 +55,55 @@ macro_rules! mk_zip {
 }
 
 mk_zip!{
-  unary Count<Label> of (HKey, Label, (), usize) by nu_count
+  unary Count<Label> of (HKey, Label, (), usize) by count
 }
 
 mk_zip!{
   unary Offset<Label> of (
     (HKey,Label), Label, Label, Zdd<Label>
-  ) by nu_offset
+  ) by offset
 }
 mk_zip!{
   unary Onset<Label> of (
     (HKey,Label), Label, Label, Zdd<Label>
-  ) by nu_onset
+  ) by onset
 }
 mk_zip!{
   unary Change<Label> of (
     (HKey,Label), Label, Label, Zdd<Label>
-  ) by nu_change
+  ) by change
 }
 
 mk_zip!{
-  binary Union<Label> of ((HKey, HKey), Label, Label, Zdd<Label>) by nu_union
+  binary Union<Label> of ((HKey, HKey), Label, Label, Zdd<Label>) by union
 }
 mk_zip!{
-  binary Inter<Label> of ((HKey, HKey), Label, Label, Zdd<Label>) by nu_inter
+  binary Inter<Label> of ((HKey, HKey), Label, Label, Zdd<Label>) by inter
 }
 mk_zip!{
-  binary Minus<Label> of ((HKey, HKey), Label, Label, Zdd<Label>) by nu_minus
+  binary Minus<Label> of ((HKey, HKey), Label, Label, Zdd<Label>) by minus
 }
 
+mk_zip!{
+  binary Subset<Label> of ((HKey, HKey), Label, (), bool) by subset
+}
+
+/**
+Zips up a `Zipper` through a factory implementing `unary::Zip` or
+`binary::Zip` from some data.
+
+Zipping up a unary zipper:
+
+```ignore
+zip_up!(factory > zip > data)
+```
+
+Zipping up a binary zipper:
+
+```ignore
+zip_up!(factory >> zip > data)
+```
+*/
 #[macro_export]
 macro_rules! zip_up {
   ($has_zip:ident > $zip:ident > $data:expr) => (
@@ -121,7 +141,7 @@ pub mod unary {
 
   pub trait Zip<
     Key, Label, Info, Data,
-    Zip: super::ZipHasVec<Step<Key, Label, Info, Data>>
+    Zip: super::Zipper<Step<Key, Label, Info, Data>>
   > {
     /// Insert into the cache corresponding to `Zip`.
     #[inline(always)]
@@ -171,7 +191,7 @@ pub mod binary {
 
   pub trait Zip<
     Key, Label, Info, Data,
-    Zip: super::ZipHasVec<Step<Key, Label, Info, Data>>
+    Zip: super::Zipper<Step<Key, Label, Info, Data>>
   > {
     /// Insert into the cache corresponding to `Zip`.
     #[inline(always)]

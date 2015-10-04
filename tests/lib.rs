@@ -4,8 +4,9 @@ extern crate rand ;
 use std::collections::BTreeSet ;
 // use std::fs::OpenOptions ;
 
-use zdd::ZddTreeOps ;
-use zdd::ZddPrint ;
+use zdd::{
+  ZddTreeOps, ZddPrint, FactoryUnLblOps, FactoryBinOps
+} ;
 
 use rand::{ StdRng, Rand, random, Closed01 } ;
 

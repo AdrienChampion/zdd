@@ -69,10 +69,10 @@ impl<Label: fmt::Display + Ord + Clone> ZddPrint<Label> for Zdd<Label> {
 
   fn print(& self, pref: String) {
     println!("{}{{", pref) ;
-    for set in self.to_set().into_iter() {
+    for vec in self.iter() {
       print!("{}  {{ ", pref) ;
       let mut first = true ;
-      for e in set.into_iter() {
+      for e in vec.into_iter() {
         print!(
           "{}{}", if first { first = false ; "" } else { ", " }, e
         )

@@ -2,14 +2,13 @@ extern crate zdd ;
 
 use zdd::* ;
 
-
 fn print_and_wtf(
   zdd: & Zdd<& 'static str>, id: usize, name: & 'static str, dir: & 'static str
 ) {
   use std::fs::OpenOptions ;
   println!("----------------------------") ;
-  println!("\n> [{:>3}] {}", id, name) ;
-  zdd.print("".to_string()) ;
+  println!("> [{:>3}] {}", id, name) ;
+  println!("  {}", zdd) ;
   println!("----------------------------") ;
   let file = format!("{}/g_{:0>3}_{}.gv", dir, id, name) ;
   match OpenOptions::new().write(true).create(true).truncate(true).open(
@@ -162,9 +161,83 @@ pub fn run2() {
 
 }
 
+// fn run_poly() {
+//   use zdd::poly::* ;
+//   use ::std::io::{ self, Write } ;
+
+//   fn println(bla: & str, poly: & Poly<f64, & 'static str, usize>) {
+//     print!("{}", bla) ;
+//     let mut out = io::stdout() ;
+//     poly.write(& mut out).unwrap() ;
+//     println!("") ;
+//   }
+
+//   let mut factory = PolyFactory::mk() ;
+//   let zero = factory.zero() ;
+//   println("zero: ", & zero) ;
+//   let zero = factory.cst(42f64) ;
+//   println("zero: ", & zero) ;
+
+// }
+
+// fn run_frac() {
+//   use zdd::frac::* ;
+
+//   fn test(num: isize, den: usize) -> Option<Frac> {
+//     print!("| {:^3}/{:^3} = ", num, den) ;
+//     match Frac::of(num,den) {
+//       None => { println!("NaN") ; None },
+//       Some(f) => { println!("{}", f) ; Some(f) }
+//     }
+//   }
+
+//   fn test_fun<F: Fn(Frac, Frac) -> Frac>(
+//     lhs: Frac, rhs: Frac, f: F, op: & str
+//   ) -> Frac {
+//     let res = f(lhs, rhs) ;
+//     println!("| {:^7} {} {:^7} = {}", lhs, op, rhs, res) ;
+//     res
+//   }
+
+//   fn test_add(lhs: Frac, rhs: Frac) -> Frac {
+//     test_fun(lhs, rhs, |lhs,rhs| lhs + rhs, "+")
+//   }
+//   fn test_sub(lhs: Frac, rhs: Frac) -> Frac {
+//     test_fun(lhs, rhs, |lhs,rhs| lhs - rhs, "-")
+//   }
+//   fn test_mul(lhs: Frac, rhs: Frac) -> Frac {
+//     test_fun(lhs, rhs, |lhs,rhs| lhs * rhs, "*")
+//   }
+//   fn test_div(lhs: Frac, rhs: Frac) -> Frac {
+//     test_fun(lhs, rhs, |lhs,rhs| (lhs / rhs).unwrap(), "/")
+//   }
+
+//   println!("") ;
+
+//   test(3, 0).is_none() ;
+//   test(0, 0).is_none() ;
+//   let _frac_0 = test(14, 3).unwrap() ;
+//   let _frac_1 = test(-7, 9).unwrap() ;
+//   let _frac_2 = test(0, 2).unwrap() ;
+//   let _frac_3 = test(14, 49).unwrap() ;
+//   let _frac_4 = test(1, 14).unwrap() ;
+
+//   let _frac_5 = test_add(_frac_3, _frac_4) ;
+//   let _frac_6 = test_div(_frac_0, _frac_3) ;
+//   let _frac_7 = test_mul(_frac_0, _frac_4) ;
+//   let _frac_8 = test_sub(_frac_5, _frac_7) ;
+//   let _frac_9 = test_mul(_frac_2, _frac_3) ;
+
+//   println!("") ;
+
+//   ()
+// }
+
 #[allow(unused)]
 fn main() {
-  // run() ;
+  run() ;
   run2() ;
+  // run_poly() ;
+  // run_frac() ;
   ()
 }

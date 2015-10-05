@@ -14,6 +14,8 @@ use std::cmp::Eq ;
 use std::collections::BTreeSet ;
 use std::fmt ;
 
+use hashconsing::HConsed ;
+
 use self::ZddTree::* ;
 
 mod print ;
@@ -24,27 +26,25 @@ mod zip ;
 
 pub mod factory ;
 pub use factory::{
-  Factory, FactoryBuilder, FactoryUnOps, FactoryUnLblOps, FactoryBinOps
+  ZddMaker, Factory, FactoryBuilder,
+  FactoryUnOps, FactoryUnLblOps, FactoryBinOps
 } ;
 
-// pub mod poly ;
+pub mod embedded ;
 
-/// A hash consed ZDD.
-pub type Zdd<Label> = ::std::sync::Arc<
-  hashconsing::sync::HashConsed<ZddTree<Label>>
-> ;
+/** A hash consed ZDD. */
+pub type Zdd<Label> = HConsed<ZddTree<Label>> ;
 
 /** Actual ZDD enum type.
 
-Usually a ZDD is either:
+  Usually a ZDD is either:
 
-* a **node** with a label and a left and a right hash consed subtree,
-* the **one** terminal, the set containing only the null combination,
-* the **zero** terminal, the empty set.
+  * a **node** with a label and a left and a right hash consed subtree,
+  * the **one** terminal, the set containing only the null combination,
+  * the **zero** terminal, the empty set.
 
-However we use *0-element edges* that indicate a path contains the null
-combination. So there's no **one** terminal.
-*/
+  However we use *0-element edges* that indicate a path contains the null
+  combination. So there's no **one** terminal.*/
 #[derive(PartialEq, Hash)]
 pub enum ZddTree<Label> {
   /// A node with a label and two kids.
@@ -110,28 +110,28 @@ impl<Label: Eq> Eq for ZddTree<Label> {}
 
 
 
-/// Basic operations on ZDD.
+/** Basic operations on ZDD. */
 pub trait ZddTreeOps<Label: Ord + Clone> {
 
-  /// Returns true iff the ZDD is *zero*.
+  /** Returns true iff the ZDD is *zero*. */
   #[inline(always)]
   fn is_zero(& self) -> bool ;
-  /// Returns true iff the ZDD is *one*.
+  /** Returns true iff the ZDD is *one*. */
   #[inline(always)]
   fn is_one(& self) -> bool ;
-  /// Returns true for all ZDDs containing the empty combination.
+  /** Returns true for all ZDDs containing the empty combination. */
   #[inline(always)]
   fn has_one(& self) -> bool ;
 
-  /// Returns the top label if the ZDD is a node, an error of `true` if the
-  /// ZDD is *one* and `false` if it is *zero*.
+  /** Returns the top label if the ZDD is a node, an error of `true` if the
+      ZDD is *one* and `false` if it is *zero*. */
   #[inline(always)]
   fn top(& self) -> Result<Label,bool> ;
 
-  /// Turns a ZDD in the corresponding set of sets of labels.
+  /** Turns a ZDD in the corresponding set of sets of labels. */
   fn to_set(& self) -> BTreeSet<BTreeSet<Label>> ;
 
-  /// Returns an iterator over a ZDD.
+  /** Returns an iterator over a ZDD. */
   fn iter(& self) -> Iterator<Label> ;
 }
 
@@ -139,18 +139,18 @@ impl<Label: Ord + Clone> ZddTreeOps<Label> for Zdd<Label> {
   fn is_zero(& self) -> bool { self.top() == Err(false) }
   fn is_one(& self) -> bool { self.top() == Err(true) }
   fn has_one(& self) -> bool {
-    match self.get() { & HasOne(_) => true, _ => false }
+    match * * self { HasOne(_) => true, _ => false }
   }
   fn top(& self) -> Result<Label,bool> {
-    match self.get() {
-      & Zero => Err(false),
+    match * * self {
+      Zero => Err(false),
       // Only one recursive call if ZDD is well-formed.
-      & HasOne(ref kid) => match kid.get() {
-        & Zero => Err(true),
-        & Node(ref lbl, _, _) => Ok(lbl.clone()),
+      HasOne(ref kid) => match * * kid {
+        Zero => Err(true),
+        Node(ref lbl, _, _) => Ok(lbl.clone()),
         _ => panic!("[top] ZDD is ill-formed"),
       },
-      & Node(ref lbl, _, _) => Ok(lbl.clone()),
+      Node(ref lbl, _, _) => Ok(lbl.clone()),
     }
   }
 
@@ -168,18 +168,18 @@ impl<Label: Ord + Clone> ZddTreeOps<Label> for Zdd<Label> {
         let mut res = BTreeSet::new() ;
         let mut zdd = self.clone() ;
         loop {
-          zdd = match zdd.get() {
-            & Node(ref top, ref lft, ref rgt) => {
+          zdd = match * zdd {
+            Node(ref top, ref lft, ref rgt) => {
               let mut rgt_set = set.clone() ;
               rgt_set.insert(top.clone()) ;
               path.push((rgt.clone(), rgt_set)) ;
               lft.clone()
             },
-            & HasOne(ref kid) => {
+            HasOne(ref kid) => {
               res.insert(set.clone()) ;
               kid.clone()
             },
-            & Zero => {
+            Zero => {
               if let Some((nu_zdd, nu_set)) = path.pop() {
                 set = nu_set ;
                 nu_zdd
@@ -219,12 +219,12 @@ impl<Label: Ord + Clone> std::iter::Iterator for Iterator<Label> {
               (prefix, zdd)
             } else { return None }
           } else {
-            match zdd.get() {
-              & HasOne(ref zdd) => {
+            match * zdd {
+              HasOne(ref zdd) => {
                 self.stack.push((prefix.clone(), zdd.clone())) ;
                 return Some(prefix)
               },
-              & Node(ref lbl, ref lft, ref rgt) => {
+              Node(ref lbl, ref lft, ref rgt) => {
                 let lft_prefix = prefix.clone() ;
                 prefix.push(lbl.clone()) ;
                 self.stack.push((lft_prefix, lft.clone())) ;

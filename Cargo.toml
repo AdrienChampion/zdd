@@ -16,4 +16,4 @@ doc = false
 
 [dependencies]
 rand = "0.3.11"
-hashconsing = "0.2.1"
+hashconsing = "0.3.0"

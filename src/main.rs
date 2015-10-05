@@ -19,14 +19,17 @@ fn print_and_wtf(
   }
 }
 
-pub fn run() {
+#[allow(dead_code)]
+pub fn run1() {
   use std::process::Command ;
   let dir = "./graphs_1" ;
 
   // Creating graph directory.
   let _ = Command::new("mkdir").arg("-p").arg(dir).output().unwrap() ;
 
-  println!("\nCreating factory.") ;
+  println!("\n|===| Test ZDD 1\n") ;
+
+  println!("Creating factory.") ;
   let mut factory = Factory::<& 'static str>::mk() ;
   let one = factory.one() ;
 
@@ -83,7 +86,7 @@ pub fn run() {
   ()
 }
 
-
+#[allow(dead_code)]
 pub fn run2() {
   use std::process::Command ;
   let dir = "./graphs_2" ;
@@ -91,7 +94,9 @@ pub fn run2() {
   // Creating graph directory.
   let _ = Command::new("mkdir").arg("-p").arg(dir).output().unwrap() ;
 
-  println!("\nCreating factory.") ;
+  println!("\n|===| Test ZDD 2\n") ;
+
+  println!("Creating factory.") ;
   let mut factory = Factory::<& 'static str>::mk() ;
   let one = factory.one() ;
 
@@ -161,27 +166,11 @@ pub fn run2() {
 
 }
 
-// fn run_poly() {
-//   use zdd::poly::* ;
-//   use ::std::io::{ self, Write } ;
-
-//   fn println(bla: & str, poly: & Poly<f64, & 'static str, usize>) {
-//     print!("{}", bla) ;
-//     let mut out = io::stdout() ;
-//     poly.write(& mut out).unwrap() ;
-//     println!("") ;
-//   }
-
-//   let mut factory = PolyFactory::mk() ;
-//   let zero = factory.zero() ;
-//   println("zero: ", & zero) ;
-//   let zero = factory.cst(42f64) ;
-//   println("zero: ", & zero) ;
-
-// }
-
+// #[allow(dead_code)]
 // fn run_frac() {
-//   use zdd::frac::* ;
+//   use zdd::poly::Frac ;
+
+//   println!("\n|===| Test frac\n") ;
 
 //   fn test(num: isize, den: usize) -> Option<Frac> {
 //     print!("| {:^3}/{:^3} = ", num, den) ;
@@ -212,8 +201,6 @@ pub fn run2() {
 //     test_fun(lhs, rhs, |lhs,rhs| (lhs / rhs).unwrap(), "/")
 //   }
 
-//   println!("") ;
-
 //   test(3, 0).is_none() ;
 //   test(0, 0).is_none() ;
 //   let _frac_0 = test(14, 3).unwrap() ;
@@ -233,11 +220,50 @@ pub fn run2() {
 //   ()
 // }
 
+// macro_rules! poly_println {
+//   ($string:expr, $poly:expr) => (
+//     {
+//       print!($string) ;
+//       let mut out = io::stdout() ;
+//       let poly = & $poly ;
+//       poly.write(& mut out).unwrap() ;
+//       println!("") ;
+//     }
+//   ) ;
+//   ($string:expr, $($params:expr),+ => $poly:expr) => (
+//     {
+//       print!($string, $($params),+) ;
+//       let mut out = io::stdout() ;
+//       let poly = & $poly ;
+//       poly.write(& mut out).unwrap() ;
+//       println!("") ;
+//     }
+//   ) ;
+// }
+
+// #[allow(dead_code)]
+// fn run_poly() {
+//   use zdd::poly::* ;
+//   use ::std::io::{ self, Write } ;
+
+//   println!("\n|===| Test poly\n") ;
+
+//   let mut factory = PolyFactory::<Frac, & 'static str, Frac>::mk() ;
+//   let zero = factory.zero() ;
+//   poly_println!("zero: ", zero) ;
+//   let frac = Frac::of(-42, 5).unwrap() ;
+//   let something = factory.cst(frac) ;
+//   poly_println!("cst({}): ", frac => something) ;
+//   println!("zdd: {}", something) ;
+
+//   println!("") ;
+// }
+
 #[allow(unused)]
 fn main() {
-  run() ;
+  run1() ;
   run2() ;
-  // run_poly() ;
   // run_frac() ;
-  ()
+  // run_poly() ;
+  println!("")
 }

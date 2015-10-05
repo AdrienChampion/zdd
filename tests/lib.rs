@@ -329,8 +329,6 @@ fn run(factory: & mut Factory, u_bound: usize, max: usize) -> usize {
         }
       }
     } ;
-    // Testing subset.
-
     // let count = factory.count(& res.0) ;
     // if count > max {
     //   match OpenOptions::new().write(true).create(true).truncate(true).open(

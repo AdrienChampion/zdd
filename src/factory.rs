@@ -8,8 +8,9 @@ One should **never** create more than one factory for a given element type. */
 
 use std::collections::{ HashMap, BTreeSet, HashSet } ;
 use std::cmp::Eq ;
+use std::hash::Hash ;
 
-use hashconsing::sync::* ;
+use hashconsing::* ;
 
 use ::{ ZddTree, Zdd, ZddTreeOps } ;
 use ZddTree::* ;
@@ -59,46 +60,92 @@ trait ZddFactory<Label: Eq + Hash> {
 
 /** Provides safe node creation. */
 pub trait ZddMaker<Label: Eq + Hash, Lft, Rgt> {
-  /** The precise semantics of this function is:
+  /** The precise semantics of this function is as follows:
 
-  ```ignore
-  fn mk_node(& mut self, lbl: Label, lhs: Lft, rhs: Rgt) -> Zdd<Label> {
-    let lhs = self.offset(lhs, & lbl) ;
-    let rhs = self.onset(rhs, & lbl) ;
-    let rhs = self.change(& rhs, & lbl) ;
-    self.union(& lhs, & rhs)
-  }
+  ```
+  use zdd::* ;
+
+  let mut consign = Factory::mk() ;
+  let lbl = 0 ;
+  let zero = consign.zero() ;
+  let one = consign.one() ;
+  let lft = zero.clone() ;
+  let rgt = one.clone() ;
+
+  let zdd1 = {
+    let lbl_zdd = consign.change(& one, & lbl) ;
+    let lft = consign.minus(& lft, & lbl_zdd) ;
+    let rgt = consign.union(& rgt, lbl_zdd) ;
+    consign.union(lft, rgt)
+  } ;
+  let zdd2 = consign.mk_node(lbl, & lft, rgt) ;
+
+  println!("zdd1 = {}", zdd1) ;
+  println!("zdd2 = {}", zdd2) ;
+
+  assert!(zdd1 == zdd2) ;
+
+  let lbl = 1 ;
+
+  let zdd1 = {
+    let lbl_zdd = consign.change(& one, & lbl) ;
+    let lft = consign.minus(& lft, & lbl_zdd) ;
+    let rgt = consign.union(& zdd1, lbl_zdd) ;
+    consign.union(lft, rgt)
+  } ;
+  let zdd2 = consign.mk_node(lbl, lft, zdd2) ;
+
+  println!("zdd1 = {}", zdd1) ;
+  println!("zdd2 = {}", zdd2) ;
+
+  assert!(zdd1 == zdd2) ;
+  assert_eq!(zdd2.top().unwrap(), 0) ;
   ```
 
-  So, if `lbl` is above all the labels in `lhs` and `rhs` it corresponds to
-  creating the node `Node(lbl, lhs, rhs)` with a slight overhead (modulo
-  zdd creation rules regarding `HasOne` and `Zero`).
+  So, if `lbl` is above all the labels in `lft` and `rgt` it corresponds to
+  creating the node `Node(lbl, lft, rgt)` (modulo zdd creation rules regarding
+  `HasOne` and `Zero`) with a slight overhead.
+
+  If `lbl` is not above all the labels in `lft` and `rgt` however (as is the
+  case in the second call of the example) the construction is safe. This is not
+  the intented usage though, which is why it has slightly weird semantics.
 
   Providing the actual node creation function is way too dangerous as there's a
-  lot of room for screwing up the ZDD well-formed-ness. */
+  lot of room for screwing up the ZDD well-formed-ness.*/
   fn mk_node(& mut self, Label, Lft, Rgt) -> Zdd<Label> ;
 }
 
 /** A ZDD factory.
 
   Wraps a hash consing table. Functions `count`, `offset`, `onset`, `change`,
-  `union`, `inter`, `minus` and `subset` are cached.*/
+  `union`, `inter`, `minus` and `subset` are cached. */
 pub struct Factory<Label: Eq + Hash> {
+  /** The hash table for ZDDs. */
   consign: HashConsign<ZddTree<Label>>,
 
+  /** The ZDD containing only the empty combination. */
   one: Zdd<Label>,
+  /** The empty ZDD. */
   zero: Zdd<Label>,
 
+  /** Cache for `count`. */
   count_cache: HashMap<HKey, usize>,
 
+  /** Cache for `offset`. */
   offset_cache: HashMap<UnaryKey<Label>, Zdd<Label>>,
+  /** Cache for `onset`. */
   onset_cache: HashMap<UnaryKey<Label>, Zdd<Label>>,
+  /** Cache for `change`. */
   change_cache: HashMap<UnaryKey<Label>, Zdd<Label>>,
 
+  /** Cache for `union`. */
   union_cache: HashMap<BinaryKey, Zdd<Label>>,
+  /** Cache for `inter`. */
   inter_cache: HashMap<BinaryKey, Zdd<Label>>,
+  /** Cache for `minus`. */
   minus_cache: HashMap<BinaryKey, Zdd<Label>>,
 
+  /** Cache for `subset`. */
   subset_cache: HashMap<BinaryKey, bool>,
 }
 
@@ -111,7 +158,7 @@ impl<Label: Ord + Eq + Hash + Clone> ZddFactory<Label> for Factory<Label> {
       // Right is zero, no need for `lbl`.
       lft
     } else {
-      if let & HasOne(ref lft) = lft.get() {
+      if let HasOne(ref lft) = * lft {
         // Left is a `HasOne`, pushing upward.
         let node = self.consign.mk( Node(lbl, lft.clone(), rgt) ) ;
         return self.consign.mk( HasOne(node) )
@@ -121,16 +168,27 @@ impl<Label: Ord + Eq + Hash + Clone> ZddFactory<Label> for Factory<Label> {
   }
 }
 
+impl<Label: Ord + Eq + Hash + Clone> ZddMaker<
+  Label, Zdd<Label>, Zdd<Label>
+> for Factory<Label> {
+  fn mk_node(
+    & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
+  ) -> Zdd<Label> {
+    let one = self.one() ;
+    let lbl_zdd = self.change(one, lbl) ;
+    let lft = self.minus(lft, & lbl_zdd) ;
+    let rgt = self.union(rgt, lbl_zdd) ;
+    self.union(lft, rgt)
+  }
+}
+
 impl<'a, 'b, Label: Ord + Eq + Hash + Clone> ZddMaker<
   Label, & 'a Zdd<Label>, & 'b Zdd<Label>
 > for Factory<Label> {
   fn mk_node(
-    & mut self, lbl: Label, lhs: & 'a Zdd<Label>, rhs: & 'b Zdd<Label>
+    & mut self, lbl: Label, lft: & 'a Zdd<Label>, rgt: & 'b Zdd<Label>
   ) -> Zdd<Label> {
-    let lhs = self.offset(lhs, & lbl) ;
-    let rhs = self.onset(rhs, & lbl) ;
-    let rhs = self.change(& rhs, & lbl) ;
-    self.union(& lhs, & rhs)
+    self.mk_node(lbl, lft.clone(), rgt.clone())
   }
 }
 
@@ -138,9 +196,9 @@ impl<'a, Label: Ord + Eq + Hash + Clone> ZddMaker<
   Label, & 'a Zdd<Label>, Zdd<Label>
 > for Factory<Label> {
   fn mk_node(
-    & mut self, lbl: Label, lhs: & 'a Zdd<Label>, rhs: Zdd<Label>
+    & mut self, lbl: Label, lft: & 'a Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
-    self.mk_node(lbl.clone(), lhs, & rhs)
+    self.mk_node(lbl.clone(), lft.clone(), rgt)
   }
 }
 
@@ -148,19 +206,9 @@ impl<'a, Label: Ord + Eq + Hash + Clone> ZddMaker<
   Label, Zdd<Label>, & 'a Zdd<Label>
 > for Factory<Label> {
   fn mk_node(
-    & mut self, lbl: Label, lhs: Zdd<Label>, rhs: & 'a Zdd<Label>
+    & mut self, lbl: Label, lft: Zdd<Label>, rgt: & 'a Zdd<Label>
   ) -> Zdd<Label> {
-    self.mk_node(lbl.clone(), & lhs, rhs)
-  }
-}
-
-impl<Label: Ord + Eq + Hash + Clone> ZddMaker<
-  Label, Zdd<Label>, Zdd<Label>
-> for Factory<Label> {
-  fn mk_node(
-    & mut self, lbl: Label, lhs: Zdd<Label>, rhs: Zdd<Label>
-  ) -> Zdd<Label> {
-    self.mk_node(lbl.clone(), & lhs, & rhs)
+    self.mk_node(lbl.clone(), lft, rgt.clone())
   }
 }
 
@@ -182,7 +230,7 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
 
     One should **never** create more than one factory for a given element type.*/
   pub fn mk() -> Self {
-    let consign = HashConsign::empty() ;
+    let mut consign = HashConsign::empty() ;
     let zero = consign.mk(Zero) ;
     let one = consign.mk( HasOne(zero.clone()) ) ;
     Factory {
@@ -205,19 +253,19 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
     }
   }
 
+  /** The *zero* element, *i.e.* the empty set. */
+  #[inline(always)]
+  pub fn zero(& self) -> Zdd<Label> { self.zero.clone() }
+
   /** The *one* element, *i.e.* the set containing only the empty combination.
     */
   #[inline(always)]
   pub fn one(& self) -> Zdd<Label> { self.one.clone() }
 
-  /** The *zero* element, *i.e.* the empty set. */
-  #[inline(always)]
-  pub fn zero(& self) -> Zdd<Label> { self.zero.clone() }
-
   /** Adds the empty combination to a ZDD if it's not already there. */
   #[inline(always)]
   pub fn add_one(& mut self, kid: Zdd<Label>) -> Zdd<Label> {
-    if match kid.get() { & HasOne(_) => true, _ => false, } {
+    if match * kid { HasOne(_) => true, _ => false, } {
       kid
     } else {
       self.consign.mk(HasOne(kid))
@@ -227,8 +275,8 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   /** Removes the empty combination from a ZDD if it's there. */
   #[inline(always)]
   pub fn rm_one(& mut self, zdd: & Zdd<Label>) -> Zdd<Label> {
-    match zdd.get() {
-      & HasOne(ref kid) => kid.clone(),
+    match * * zdd {
+      HasOne(ref kid) => kid.clone(),
       _ => zdd.clone(),
     }
   }
@@ -243,14 +291,14 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
     lookup.*/
   #[inline(always)]
   pub fn lft(& mut self, zdd: & Zdd<Label>) -> Result<Zdd<Label>,bool> {
-    match zdd.get() {
-      & Node(_, ref lft, _) => Ok(lft.clone()),
-      & HasOne(ref kid) => match kid.get() {
-        & Node(_, ref lft, _) => Ok(self.add_one(lft.clone())),
-        & Zero => Err(true),
+    match * * zdd {
+      Node(_, ref lft, _) => Ok(lft.clone()),
+      HasOne(ref kid) => match * * kid {
+        Node(_, ref lft, _) => Ok(self.add_one(lft.clone())),
+        Zero => Err(true),
         _ => panic!("[lft] ZDD is ill-formed"),
       },
-      & Zero => Err(false),
+      Zero => Err(false),
     }
   }
 
@@ -260,14 +308,14 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
     Unlike `lft`, mutability on the factory is not necessary. */
   #[inline(always)]
   pub fn rgt(& self, zdd: & Zdd<Label>) -> Result<Zdd<Label>,bool> {
-    match zdd.get() {
-      & Node(_, _, ref rgt) => Ok(rgt.clone()),
-      & HasOne(ref kid) => match kid.get() {
-        & Node(_, _, ref rgt) => Ok(rgt.clone()),
-        & Zero => Err(true),
+    match * * zdd {
+      Node(_, _, ref rgt) => Ok(rgt.clone()),
+      HasOne(ref kid) => match * * kid {
+        Node(_, _, ref rgt) => Ok(rgt.clone()),
+        Zero => Err(true),
         _ => panic!("[rgt] ZDD is ill-formed"),
       },
-      & Zero => Err(false),
+      Zero => Err(false),
     }
   }
 
@@ -279,16 +327,16 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   pub fn kids(
     & mut self, zdd: & Zdd<Label>
   ) -> Result<(Zdd<Label>, Zdd<Label>),bool> {
-    match zdd.get() {
-      & Node(_, ref lft, ref rgt) => Ok((lft.clone(), rgt.clone())),
-      & HasOne(ref kid) => match kid.get() {
-        & Node(_, ref lft, ref rgt) => Ok(
+    match * * zdd {
+      Node(_, ref lft, ref rgt) => Ok((lft.clone(), rgt.clone())),
+      HasOne(ref kid) => match * * kid {
+        Node(_, ref lft, ref rgt) => Ok(
           (self.add_one(lft.clone()), rgt.clone())
         ),
-        & Zero => Err(true),
+        Zero => Err(true),
         _ => panic!("[rgt] ZDD is ill-formed"),
       },
-      & Zero => Err(false),
+      Zero => Err(false),
     }
   }
 
@@ -1117,7 +1165,7 @@ pub struct FactoryBuilder {
 impl FactoryBuilder {
   /** Builds the factory with the capacities. */
   pub fn build<Label: Eq + Hash>(self) -> Factory<Label> {
-    let consign = HashConsign::empty_with_capacity(self.consign) ;
+    let mut consign = HashConsign::empty_with_capacity(self.consign) ;
     let zero = consign.mk(Zero) ;
     let one = consign.mk( HasOne(zero.clone()) ) ;
     Factory {

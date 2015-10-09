@@ -17,7 +17,7 @@ One should **never** create more than one factory for a given element type.
 */
 
 use std::collections::{ HashMap, BTreeSet, HashSet } ;
-use std::sync::{ Mutex, MutexGuard } ;
+use std::sync::{ Arc, Mutex, MutexGuard } ;
 use std::marker::Sync ;
 use std::cmp::Eq ;
 use std::hash::Hash ;
@@ -78,7 +78,7 @@ pub trait ZddMaker<Label: Eq + Hash, Lft, Rgt> {
     ```
     use zdd::* ;
 
-    let mut consign = Factory::mk() ;
+    let consign = Factory::mk() ;
     let lbl = 0 ;
     let zero = consign.zero() ;
     let one = consign.one() ;
@@ -86,9 +86,8 @@ pub trait ZddMaker<Label: Eq + Hash, Lft, Rgt> {
     let rgt = one.clone() ;
 
     let zdd1 = {
-      let lbl_zdd = consign.change(& one, & lbl) ;
-      let lft = consign.minus(& lft, & lbl_zdd) ;
-      let rgt = consign.union(& rgt, lbl_zdd) ;
+      let lft = consign.offset(& lft, & lbl) ;
+      let rgt = consign.change(& rgt, & lbl) ;
       consign.union(lft, rgt)
     } ;
     let zdd2 = consign.mk_node(lbl, & lft, rgt) ;
@@ -101,9 +100,8 @@ pub trait ZddMaker<Label: Eq + Hash, Lft, Rgt> {
     let lbl = 1 ;
 
     let zdd1 = {
-      let lbl_zdd = consign.change(& one, & lbl) ;
-      let lft = consign.minus(& lft, & lbl_zdd) ;
-      let rgt = consign.union(& zdd1, lbl_zdd) ;
+      let lft = consign.offset(& lft,  & lbl) ;
+      let rgt = consign.change(& zdd1, & lbl) ;
       consign.union(lft, rgt)
     } ;
     let zdd2 = consign.mk_node(lbl, lft, zdd2) ;
@@ -120,9 +118,9 @@ pub trait ZddMaker<Label: Eq + Hash, Lft, Rgt> {
     regarding `HasOne` and `Zero`) with a slight overhead.
 
     If `lbl` is not above all the labels in `lft` and `rgt` however (as is the
-    case in the second call of the example) the construction is safe. This is
-    not the intented usage though, which is why it has slightly weird
-    semantics.
+    case in the second call of the example) the construction is safe: the
+    resulting ZDD is well-formed. This is not the intented usage though, which
+    is why it has slightly weird semantics.
 
     Providing the actual node creation function is way too dangerous as there's
     a lot of room for screwing up the ZDD well-formed-ness. */
@@ -192,10 +190,8 @@ impl<Label: Ord + Eq + Hash + Clone> ZddMaker<
   fn mk_node(
     & self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
-    let one = self.one() ;
-    let lbl_zdd = self.change(one, lbl) ;
-    let lft = self.minus(lft, & lbl_zdd) ;
-    let rgt = self.union(rgt, lbl_zdd) ;
+    let lft = self.offset(lft, & lbl) ;
+    let rgt = self.change(rgt, & lbl) ;
     self.union(lft, rgt)
   }
 }
@@ -1202,7 +1198,7 @@ pub struct FactoryBuilder {
 }
 
 impl FactoryBuilder {
-  /** Builds the factory with the capacities. */
+  /** Builds a factory with the corresponding capacities. */
   pub fn build<Label: Eq + Hash>(self) -> Factory<Label> {
     let mut consign = HashConsign::empty_with_capacity(self.consign) ;
     let zero = consign.mk(Zero) ;
@@ -1225,6 +1221,11 @@ impl FactoryBuilder {
 
       subset_cache: Mutex::new( HashMap::with_capacity(self.subset) ),
     }
+  }
+
+  /** Builds an Arc of a factory with the corresponding capacities. */
+  pub fn build_arc<Label: Eq + Hash>(self) -> Arc<Factory<Label>> {
+    Arc::new( self.build() )
   }
 
   /** Creates a new factory builder with all capacities equal to zero. */

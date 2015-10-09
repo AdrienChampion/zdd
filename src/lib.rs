@@ -7,12 +7,56 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-/*!
-A ZDD library, based on [this paper by Shin-Ichi Minato][zdd paper].
+/*! A ZDD library, based on [this paper by Shin-Ichi Minato][zdd paper].
 
-ZDDs are hash consed so equality is constant time. All operations provided by
-`Factory` are cached. ZDDs are `Arc` of hash consed `ZddTree` so they can be
-safely sent to other threads.
+ZDDs are hash consed so equality is constant time. All operations on ZDDs
+provided by `Factory` are cached: `count`, `offset`, `onset`, `change`,
+`union`, `inter`, `minus` and `subset`.
+
+# Factory
+
+A `Factory` maintains the hash cons table for the ZDDs, as well as the caches
+for basic operations. A factory is thread-safe.
+Usage is *Caml*-module-like
+
+```
+use zdd::* ;
+let f = Factory::<& 'static str>::mk() ;
+
+let ref zero = f.zero() ;
+let ref one = f.one() ;
+
+let ref x = f.mk_node("x", zero, one) ;
+let ref _x = f.change(one, "x") ;
+println!(" x: {}",  x) ;
+println!("_x: {}", _x) ;
+assert!(x == _x) ;
+
+let ref y = f.change(one, "y") ;
+let ref x_u_y = f.union(x, y) ;
+let ref z = f.change(one, "z") ;
+let ref x_u_y_m_z = f.minus(x_u_y, z) ;
+assert!(x_u_y_m_z == x_u_y) ;
+```
+
+# Wrapped
+
+The easiest way to manipulate ZDDs is to use `wrapped::Zdd` which is wrapper
+around a ZDD and its associated factory.
+
+```
+use zdd::wrapped::* ;
+let f = mk_factory::<& 'static str>() ;
+
+let ref one = Zdd::one(& f) ;
+
+let ref x = one ^ "x"         ; // Change "x" in one.
+let ref y = one ^ "y"         ; // change "y" in one.
+let ref z = one ^ "z"         ; // Change "z" in one.
+let ref x_u_y = x + y         ; // Union.
+let ref x_u_y_m_z = x_u_y - z ; // Difference.
+assert!(x_u_y_m_z == x_u_y) ;
+```
 
 [zdd paper]: http://link.springer.com/article/10.1007%2Fs100090100038 (Zero-suppressed BDDs and their applications)
 */
@@ -210,7 +254,7 @@ impl<Label: Ord + Clone> ZddTreeOps<Label> for Zdd<Label> {
 }
 
 
-/** An iterator over combinations of a ZDD. */
+/** An iterator over the combinations of a ZDD. */
 pub struct Iterator<Label> {
   /** A stack of `(prefix, zdd)` where `prefix` are the elements in the
     combination `zdd` is the suffix of. */

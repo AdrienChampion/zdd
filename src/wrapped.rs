@@ -1,4 +1,14 @@
-/*! ZDD containing their factory. */
+/*! ZDDs containing their factory.
+
+They are equipped with the following operators:
+
+| Unary operators |                      |    Binary operators  |      |
+|:-----------:|:------------------------:|:------------:|:------------:|
+| <code>zdd &#124; elem</code> | offset of `elm` in `zdd` | `lhs + rhs`  | union        |
+| `zdd % elm` | onset of `elm` in `zdd`  | `lhs - rhs`  | difference   |
+| `zdd ^ elm` | change of `elm` in `zdd` | `lhs & rhs`  | intersection |
+|             |                          | `lhs << rhs` | subset       |
+*/
 
 use std::io ;
 use std::fmt ;
@@ -16,23 +26,18 @@ pub use ZddTree ;
 pub use ZddTreeOps ;
 pub use Iterator ;
 use factory::{ FactoryUnOps, FactoryUnLblOps, FactoryBinOps } ;
-use print::ZddPrint ;
+pub use factory::FactoryBuilder ;
+pub use print::ZddPrint ;
 
 /** An `Arc` of a factory. */
 pub type Factory<Label> = Arc<::factory::Factory<Label>> ;
 
-/** A wrapper around a ZDD and its factory.
+/** Creates a thread-safe factory. */
+pub fn mk_factory<Label: Eq + Hash + Clone + Ord>() -> Factory<Label> {
+  Arc::new(::factory::Factory::mk())
+}
 
-  It is equipped with the following operators:
-
-| Unary operators |                      |    Binary operators  |      |
-|:-----------:|:------------------------:|:------------:|:------------:|
-| <code>zdd &#124; elem</code> | offset of `elm` in `zdd` | `lhs + rhs`  | union        |
-| `zdd % elm` | onset of `elm` in `zdd`  | `lhs - rhs`  | difference   |
-| `zdd ^ elm` | change of `elm` in `zdd` | `lhs & rhs`  | intersection |
-|             |                          | `lhs << rhs` | subset       |
-
-*/
+/** A wrapper around a ZDD and its factory. */
 #[derive(Clone)]
 pub struct Zdd<Label: Eq + Hash + Clone> {
   zdd: HConsed<ZddTree<Label>>,

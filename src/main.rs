@@ -30,7 +30,7 @@ pub fn run1() {
   println!("\n|===| Test ZDD 1\n") ;
 
   println!("Creating factory.") ;
-  let mut factory = Factory::<& 'static str>::mk() ;
+  let factory = Factory::<& 'static str>::mk() ;
   let one = factory.one() ;
 
   let zdd1 = factory.change(& one, & "a") ;
@@ -97,7 +97,7 @@ pub fn run2() {
   println!("\n|===| Test ZDD 2\n") ;
 
   println!("Creating factory.") ;
-  let mut factory = Factory::<& 'static str>::mk() ;
+  let factory = Factory::<& 'static str>::mk() ;
   let one = factory.one() ;
 
   let zdd1 = factory.change(& one, & "a") ;

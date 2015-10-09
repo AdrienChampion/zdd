@@ -201,15 +201,15 @@ pub mod unary {
   > {
     /** Insert into the cache corresponding to `Zip`. */
     #[inline(always)]
-    fn cache_insert(& mut self, Key, & Data) ;
+    fn cache_insert(& self, Key, & Data) ;
 
     /** Combines data, used in terminal steps. */
     #[inline(always)]
-    fn combine(& mut self, Info, Data, Data) -> Data ;
+    fn combine(& self, Info, Data, Data) -> Data ;
 
     /** Zips up a unary zip. */
     fn zip(
-      & mut self, mut data: Data, zip: & mut Zip
+      & self, mut data: Data, zip: & mut Zip
     ) -> super::Res<Data,Zdd<Label>> {
       loop {
         data = match zip.pop() {
@@ -264,15 +264,15 @@ pub mod binary {
   > {
     /** Insert into the cache corresponding to `Zip`. */
     #[inline(always)]
-    fn cache_insert(& mut self, Key, & Data) ;
+    fn cache_insert(& self, Key, & Data) ;
 
     /** Combines data, used in terminal steps. */
     #[inline(always)]
-    fn combine(& mut self, Info, Data, Data) -> Data ;
+    fn combine(& self, Info, Data, Data) -> Data ;
 
     /** Zips up a binary zip. */
     fn zip(
-      & mut self, mut data: Data, zip: & mut Zip
+      & self, mut data: Data, zip: & mut Zip
     ) -> super::Res<Data,(Zdd<Label>, Zdd<Label>)> {
       loop {
         data = match zip.pop() {

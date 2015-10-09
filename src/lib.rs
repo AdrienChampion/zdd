@@ -124,7 +124,7 @@ pub trait ZddTreeOps<Label: Ord + Clone> {
   fn has_one(& self) -> bool ;
 
   /** Returns the top label if the ZDD is a node, an error of `true` if the
-      ZDD is *one* and `false` if it is *zero*. */
+    ZDD is *one* and `false` if it is *zero*. */
   #[inline(always)]
   fn top(& self) -> Result<Label,bool> ;
 

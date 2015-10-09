@@ -2,10 +2,11 @@ extern crate zdd ;
 extern crate rand ;
 
 use std::collections::BTreeSet ;
-// use std::fs::OpenOptions ;
+use std::sync::Arc ;
+use std::fs::OpenOptions ;
 
 use zdd::{
-  ZddTreeOps, ZddPrint, FactoryUnLblOps, FactoryBinOps
+  ZddTreeOps, ZddPrint
 } ;
 
 use rand::{ StdRng, Rand, random, Closed01 } ;
@@ -13,7 +14,7 @@ use rand::{ StdRng, Rand, random, Closed01 } ;
 type Lbl = u8 ;
 type Set = BTreeSet<Lbl> ;
 type SSet = BTreeSet<Set> ;
-type Zdd = zdd::Zdd<Lbl> ;
+type Zdd = zdd::embedded::Zdd<Lbl> ;
 type Factory = zdd::Factory<Lbl> ;
 type FBuilder = zdd::FactoryBuilder ;
 
@@ -118,13 +119,13 @@ fn set_minus(lhs: & SSet, rhs: & SSet) -> SSet {
 }
 
 fn offset(
-  f: & mut Factory, zdd: & Zdd, sset: & SSet, lbl: & Lbl
+  zdd: & Zdd, sset: & SSet, lbl: & Lbl
 ) -> (Zdd, SSet) {
   let name = "offset" ;
   // if * sset != zdd.to_set() {
   //   panic!("{} | inconsistent inputs", name)
   // }
-  let res_zdd = f.offset(zdd, lbl) ;
+  let res_zdd = zdd | lbl ;
   let res_sset = set_offset(sset, lbl) ;
   if res_zdd.to_set() != res_sset {
     println!("{} {}", name, lbl) ;
@@ -142,13 +143,13 @@ fn offset(
 }
 
 fn onset(
-  f: & mut Factory, zdd: & Zdd, sset: & SSet, lbl: & Lbl
+  zdd: & Zdd, sset: & SSet, lbl: & Lbl
 ) -> (Zdd, SSet) {
   let name = "onset" ;
   // if * sset != zdd.to_set() {
   //   panic!("{} | inconsistent inputs", name)
   // }
-  let res_zdd = f.onset(zdd, lbl) ;
+  let res_zdd = zdd % lbl ;
   let res_sset = set_onset(sset, lbl) ;
   if res_sset != res_zdd.to_set() {
     println!("{} {}", name, lbl) ;
@@ -166,13 +167,13 @@ fn onset(
 }
 
 fn change(
-  f: & mut Factory, zdd: & Zdd, sset: & SSet, lbl: & Lbl
+  zdd: & Zdd, sset: & SSet, lbl: & Lbl
 ) -> (Zdd, SSet) {
   let name = "change" ;
   // if * sset != zdd.to_set() {
   //   panic!("{} | inconsistent inputs", name)
   // }
-  let res_zdd = f.change(zdd, lbl) ;
+  let res_zdd = zdd ^ lbl ;
   let res_sset = set_change(sset, lbl) ;
   if res_sset != res_zdd.to_set() {
     println!("{} {}", name, lbl) ;
@@ -190,7 +191,6 @@ fn change(
 }
 
 fn union(
-  f: & mut Factory,
   lhs_zdd: & Zdd, rhs_zdd: & Zdd,
   lhs_sset: & SSet, rhs_sset: & SSet,
 ) -> (Zdd, SSet) {
@@ -198,7 +198,7 @@ fn union(
   // if * lhs_sset != lhs_zdd.to_set() || * rhs_sset != rhs_zdd.to_set() {
   //   panic!("{} | inconsistent inputs", name)
   // }
-  let res_zdd = f.union(lhs_zdd, rhs_zdd) ;
+  let res_zdd = lhs_zdd + rhs_zdd ;
   let res_sset = set_union(lhs_sset, rhs_sset) ;
   if res_sset != res_zdd.to_set() {
     println!("{}", name) ;
@@ -216,13 +216,12 @@ fn union(
     sset_print(& res_sset, "| ".to_string()) ;
     panic!("{} | result mismatch", name)
   } ;
-  assert!(f.subset(lhs_zdd, & res_zdd)) ;
-  assert!(f.subset(rhs_zdd, & res_zdd)) ;
+  assert!(lhs_zdd << & res_zdd) ;
+  assert!(rhs_zdd << & res_zdd) ;
   (res_zdd, res_sset)
 }
 
 fn inter(
-  f: & mut Factory,
   lhs_zdd: & Zdd, rhs_zdd: & Zdd,
   lhs_sset: & SSet, rhs_sset: & SSet,
 ) -> (Zdd, SSet) {
@@ -230,7 +229,7 @@ fn inter(
   // if * lhs_sset != lhs_zdd.to_set() || * rhs_sset != rhs_zdd.to_set() {
   //   panic!("{} | inconsistent inputs", name)
   // }
-  let res_zdd = f.inter(lhs_zdd, rhs_zdd) ;
+  let res_zdd = lhs_zdd & rhs_zdd ;
   let res_sset = set_inter(lhs_sset, rhs_sset) ;
   if res_sset != res_zdd.to_set() {
     println!("{}", name) ;
@@ -248,13 +247,12 @@ fn inter(
     sset_print(& res_sset, "| ".to_string()) ;
     panic!("{} | result mismatch", name)
   } ;
-  assert!(f.subset(& res_zdd, lhs_zdd)) ;
-  assert!(f.subset(& res_zdd, rhs_zdd)) ;
+  assert!(& res_zdd << lhs_zdd) ;
+  assert!(& res_zdd << rhs_zdd) ;
   (res_zdd, res_sset)
 }
 
 fn minus(
-  f: & mut Factory,
   lhs_zdd: & Zdd, rhs_zdd: & Zdd,
   lhs_sset: & SSet, rhs_sset: & SSet,
 ) -> (Zdd, SSet) {
@@ -262,7 +260,7 @@ fn minus(
   // if * lhs_sset != lhs_zdd.to_set() || * rhs_sset != rhs_zdd.to_set() {
   //   panic!("{} | inconsistent inputs", name)
   // }
-  let res_zdd = f.minus(lhs_zdd, rhs_zdd) ;
+  let res_zdd = lhs_zdd - rhs_zdd ;
   let res_sset = set_minus(lhs_sset, rhs_sset) ;
   if res_sset != res_zdd.to_set() {
     println!("{}", name) ;
@@ -280,17 +278,19 @@ fn minus(
     sset_print(& res_sset, "| ".to_string()) ;
     panic!("{} | result mismatch", name)
   } ;
-  assert!(f.subset(& res_zdd, lhs_zdd)) ;
-  assert!(rhs_zdd.is_zero() || ! f.subset(rhs_zdd, & res_zdd)) ;
+  assert!(& res_zdd << lhs_zdd) ;
+  assert!(rhs_zdd.is_zero() || ! (rhs_zdd << & res_zdd)) ;
   (res_zdd, res_sset)
 }
 
-fn run(factory: & mut Factory, u_bound: usize, max: usize) -> usize {
-  // let mut max = max ;
+fn run(
+  factory: & zdd::embedded::Factory<Lbl>, u_bound: usize, max: usize
+) -> usize {
+  let mut max = max ;
   let mut rng = StdRng::new().unwrap() ;
   let mut vec = vec![
-    (factory.zero(), set_zero()),
-    (factory.one(), set_one()),
+    (Zdd::zero(factory), set_zero()),
+    (Zdd::one(factory), set_one()),
   ] ;
   for i in 0..u_bound {
     // println!("at {}", i) ;
@@ -301,13 +301,13 @@ fn run(factory: & mut Factory, u_bound: usize, max: usize) -> usize {
         let c = Lbl::rand(& mut rng) % 100u8 ;
         match f {
           f if f < 0.16f64 || i < 10 => offset(
-            factory, zdd, sset, & c
+            zdd, sset, & c
           ),
           f if f < 0.32f64 => onset(
-            factory, zdd, sset, & c
+            zdd, sset, & c
           ),
           _ => change(
-            factory, zdd, sset, & c
+            zdd, sset, & c
           ),
         }
       },
@@ -318,27 +318,27 @@ fn run(factory: & mut Factory, u_bound: usize, max: usize) -> usize {
         let (ref rhs_zdd, ref rhs_sset) = vec[index] ;
         match f {
           f if f < 0.80f64 => union(
-            factory, lhs_zdd, rhs_zdd, lhs_sset, rhs_sset
+            lhs_zdd, rhs_zdd, lhs_sset, rhs_sset
           ),
           f if f < 0.90f64 => inter(
-            factory, lhs_zdd, rhs_zdd, lhs_sset, rhs_sset
+            lhs_zdd, rhs_zdd, lhs_sset, rhs_sset
           ),
           _ => minus(
-            factory, lhs_zdd, rhs_zdd, lhs_sset, rhs_sset
+            lhs_zdd, rhs_zdd, lhs_sset, rhs_sset
           ),
         }
       }
     } ;
-    // let count = factory.count(& res.0) ;
-    // if count > max {
-    //   match OpenOptions::new().write(true).create(true).truncate(true).open(
-    //     "graph"
-    //   ) {
-    //     Ok(mut wrt) => res.0.write_as_gv(& mut wrt).unwrap(),
-    //     Err(e) => panic!("{}", e),
-    //   }
-    //   max = count
-    // } ;
+    let count = res.0.count() ;
+    if count > max {
+      match OpenOptions::new().write(true).create(true).truncate(true).open(
+        "graph"
+      ) {
+        Ok(mut wrt) => res.0.write_as_gv(& mut wrt).unwrap(),
+        Err(e) => panic!("{}", e),
+      }
+      max = count
+    } ;
     vec.push(res)
   } ;
   max
@@ -346,25 +346,25 @@ fn run(factory: & mut Factory, u_bound: usize, max: usize) -> usize {
 
 #[test]
 fn thirteen_times_100() {
-  let mut factory = FBuilder::mk().len(1300).build() ;
+  let factory = Arc::new( FBuilder::mk().len(1300).build() ) ;
   for _ in 0..13 {
-    run(& mut factory, 100, 100) ;
+    run(& factory, 100, 100) ;
   }
 }
 
 #[test]
 fn seven_times_10000() {
-  let mut factory = FBuilder::mk().len(10000).build() ;
+  let factory = Arc::new( FBuilder::mk().len(10000).build() ) ;
   for _ in 0..7 {
-    run(& mut factory, 10000, 100) ;
+    run(& factory, 10000, 100) ;
   }
 }
 
 #[test]
 fn three_times_1000000() {
-  let mut factory = FBuilder::mk().len(1000000).build() ;
+  let factory = Arc::new( FBuilder::mk().len(1000000).build() ) ;
   let mut max = 0 ;
   for _ in 0..3 {
-    max = run(& mut factory, 1000000, max)
+    max = run(& factory, 1000000, max)
   }
 }

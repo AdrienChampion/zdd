@@ -7,6 +7,8 @@ operations.
 One should **never** create more than one factory for a given element type. */
 
 use std::collections::{ HashMap, BTreeSet, HashSet } ;
+use std::sync::{ Mutex, MutexGuard } ;
+use std::marker::Sync ;
 use std::cmp::Eq ;
 use std::hash::Hash ;
 
@@ -22,97 +24,99 @@ use zip::{ HKey, UnaryKey, BinaryKey } ;
 /** Unary operations on ZDDs. */
 pub trait FactoryUnOps<Label: Ord + Eq + Hash + Clone, ZDD> {
   /** The number of combinations in a ZDD. Cached. */
-  fn count (& mut self, ZDD) -> usize ;
+  fn count (& self, ZDD) -> usize ;
 }
 
 /** Unary operations on ZDDs taking a label as parameter. */
 pub trait FactoryUnLblOps<Label: Ord + Eq + Hash + Clone, ZDD, LabelParam> {
   /** The set of combinations of `zdd` in which `lbl` does not appear.
-      Cached. */
-  fn offset(& mut self, ZDD, LabelParam) -> Zdd<Label> ;
+    Cached. */
+  fn offset(& self, ZDD, LabelParam) -> Zdd<Label> ;
   /** The set of combinations of `zdd` in which `lbl` appears, without `lbl`
-      in them. Cached. */
-  fn onset (& mut self, ZDD, LabelParam) -> Zdd<Label> ;
+    in them. Cached. */
+  fn onset (& self, ZDD, LabelParam) -> Zdd<Label> ;
   /** Switches `lbl` in each combination of `zdd`. Inverts `offset` and
-      `onset`. Cached. */
-  fn change(& mut self, ZDD, LabelParam) -> Zdd<Label> ;
+    `onset`. Cached. */
+  fn change(& self, ZDD, LabelParam) -> Zdd<Label> ;
 }
 
 /** Binary operations on ZDDs. */
 pub trait FactoryBinOps<Label: Ord + Eq + Hash + Clone, LHS, RHS> {
   /** The union of two ZDDs. Cached. */
-  fn union (& mut self, LHS, RHS) -> Zdd<Label> ;
+  fn union (& self, LHS, RHS) -> Zdd<Label> ;
   /** The intersection of two ZDDs. Cached. */
-  fn inter (& mut self, LHS, RHS) -> Zdd<Label> ;
+  fn inter (& self, LHS, RHS) -> Zdd<Label> ;
   /** The difference of two ZDDs. Cached. */
-  fn minus (& mut self, LHS, RHS) -> Zdd<Label> ;
+  fn minus (& self, LHS, RHS) -> Zdd<Label> ;
+
   /** Returns true iff `lhs` is a subset of `rhs`. Cached. */
-  fn subset(& mut self, LHS, RHS) -> bool ;
+  fn subset(& self, LHS, RHS) -> bool ;
 }
 
 /** Internal ZDD factory trait, creates a node without checking the consistency
-    of the label. */
+  of the label. */
 trait ZddFactory<Label: Eq + Hash> {
   /** Creates a node following the ZDD rules, but without checking that the
-      label is actually consistent with the kids. */
-  fn node(& mut self, Label, Zdd<Label>, Zdd<Label>) -> Zdd<Label> ;
+    label is actually consistent with the kids. */
+  fn node(& self, Label, Zdd<Label>, Zdd<Label>) -> Zdd<Label> ;
 }
 
 /** Provides safe node creation. */
 pub trait ZddMaker<Label: Eq + Hash, Lft, Rgt> {
   /** The precise semantics of this function is as follows:
 
-  ```
-  use zdd::* ;
+    ```
+    use zdd::* ;
 
-  let mut consign = Factory::mk() ;
-  let lbl = 0 ;
-  let zero = consign.zero() ;
-  let one = consign.one() ;
-  let lft = zero.clone() ;
-  let rgt = one.clone() ;
+    let mut consign = Factory::mk() ;
+    let lbl = 0 ;
+    let zero = consign.zero() ;
+    let one = consign.one() ;
+    let lft = zero.clone() ;
+    let rgt = one.clone() ;
 
-  let zdd1 = {
-    let lbl_zdd = consign.change(& one, & lbl) ;
-    let lft = consign.minus(& lft, & lbl_zdd) ;
-    let rgt = consign.union(& rgt, lbl_zdd) ;
-    consign.union(lft, rgt)
-  } ;
-  let zdd2 = consign.mk_node(lbl, & lft, rgt) ;
+    let zdd1 = {
+      let lbl_zdd = consign.change(& one, & lbl) ;
+      let lft = consign.minus(& lft, & lbl_zdd) ;
+      let rgt = consign.union(& rgt, lbl_zdd) ;
+      consign.union(lft, rgt)
+    } ;
+    let zdd2 = consign.mk_node(lbl, & lft, rgt) ;
 
-  println!("zdd1 = {}", zdd1) ;
-  println!("zdd2 = {}", zdd2) ;
+    println!("zdd1 = {}", zdd1) ;
+    println!("zdd2 = {}", zdd2) ;
 
-  assert!(zdd1 == zdd2) ;
+    assert!(zdd1 == zdd2) ;
 
-  let lbl = 1 ;
+    let lbl = 1 ;
 
-  let zdd1 = {
-    let lbl_zdd = consign.change(& one, & lbl) ;
-    let lft = consign.minus(& lft, & lbl_zdd) ;
-    let rgt = consign.union(& zdd1, lbl_zdd) ;
-    consign.union(lft, rgt)
-  } ;
-  let zdd2 = consign.mk_node(lbl, lft, zdd2) ;
+    let zdd1 = {
+      let lbl_zdd = consign.change(& one, & lbl) ;
+      let lft = consign.minus(& lft, & lbl_zdd) ;
+      let rgt = consign.union(& zdd1, lbl_zdd) ;
+      consign.union(lft, rgt)
+    } ;
+    let zdd2 = consign.mk_node(lbl, lft, zdd2) ;
 
-  println!("zdd1 = {}", zdd1) ;
-  println!("zdd2 = {}", zdd2) ;
+    println!("zdd1 = {}", zdd1) ;
+    println!("zdd2 = {}", zdd2) ;
 
-  assert!(zdd1 == zdd2) ;
-  assert_eq!(zdd2.top().unwrap(), 0) ;
-  ```
+    assert!(zdd1 == zdd2) ;
+    assert_eq!(zdd2.top().unwrap(), 0) ;
+    ```
 
-  So, if `lbl` is above all the labels in `lft` and `rgt` it corresponds to
-  creating the node `Node(lbl, lft, rgt)` (modulo zdd creation rules regarding
-  `HasOne` and `Zero`) with a slight overhead.
+    So, if `lbl` is above all the labels in `lft` and `rgt` it corresponds to
+    creating the node `Node(lbl, lft, rgt)` (modulo zdd creation rules
+    regarding `HasOne` and `Zero`) with a slight overhead.
 
-  If `lbl` is not above all the labels in `lft` and `rgt` however (as is the
-  case in the second call of the example) the construction is safe. This is not
-  the intented usage though, which is why it has slightly weird semantics.
+    If `lbl` is not above all the labels in `lft` and `rgt` however (as is the
+    case in the second call of the example) the construction is safe. This is
+    not the intented usage though, which is why it has slightly weird
+    semantics.
 
-  Providing the actual node creation function is way too dangerous as there's a
-  lot of room for screwing up the ZDD well-formed-ness.*/
-  fn mk_node(& mut self, Label, Lft, Rgt) -> Zdd<Label> ;
+    Providing the actual node creation function is way too dangerous as there's
+    a lot of room for screwing up the ZDD well-formed-ness. */
+  fn mk_node(& self, Label, Lft, Rgt) -> Zdd<Label> ;
 }
 
 /** A ZDD factory.
@@ -121,7 +125,7 @@ pub trait ZddMaker<Label: Eq + Hash, Lft, Rgt> {
   `union`, `inter`, `minus` and `subset` are cached. */
 pub struct Factory<Label: Eq + Hash> {
   /** The hash table for ZDDs. */
-  consign: HashConsign<ZddTree<Label>>,
+  consign: Mutex< HashConsign<ZddTree<Label>> >,
 
   /** The ZDD containing only the empty combination. */
   one: Zdd<Label>,
@@ -129,30 +133,32 @@ pub struct Factory<Label: Eq + Hash> {
   zero: Zdd<Label>,
 
   /** Cache for `count`. */
-  count_cache: HashMap<HKey, usize>,
+  count_cache: Mutex< HashMap<UnaryKey<()>, usize> >,
 
   /** Cache for `offset`. */
-  offset_cache: HashMap<UnaryKey<Label>, Zdd<Label>>,
+  offset_cache: Mutex< HashMap<UnaryKey<Label>, Zdd<Label>> >,
   /** Cache for `onset`. */
-  onset_cache: HashMap<UnaryKey<Label>, Zdd<Label>>,
+  onset_cache: Mutex< HashMap<UnaryKey<Label>, Zdd<Label>> >,
   /** Cache for `change`. */
-  change_cache: HashMap<UnaryKey<Label>, Zdd<Label>>,
+  change_cache: Mutex< HashMap<UnaryKey<Label>, Zdd<Label>> >,
 
   /** Cache for `union`. */
-  union_cache: HashMap<BinaryKey, Zdd<Label>>,
+  union_cache: Mutex< HashMap<BinaryKey, Zdd<Label>> >,
   /** Cache for `inter`. */
-  inter_cache: HashMap<BinaryKey, Zdd<Label>>,
+  inter_cache: Mutex< HashMap<BinaryKey, Zdd<Label>> >,
   /** Cache for `minus`. */
-  minus_cache: HashMap<BinaryKey, Zdd<Label>>,
+  minus_cache: Mutex< HashMap<BinaryKey, Zdd<Label>> >,
 
   /** Cache for `subset`. */
-  subset_cache: HashMap<BinaryKey, bool>,
+  subset_cache: Mutex< HashMap<BinaryKey, bool> >,
 }
+
+unsafe impl<Label: Eq + Hash> Sync for Factory<Label> {}
 
 
 impl<Label: Ord + Eq + Hash + Clone> ZddFactory<Label> for Factory<Label> {
   fn node(
-    & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
+    & self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
     if rgt == self.zero {
       // Right is zero, no need for `lbl`.
@@ -160,10 +166,12 @@ impl<Label: Ord + Eq + Hash + Clone> ZddFactory<Label> for Factory<Label> {
     } else {
       if let HasOne(ref lft) = * lft {
         // Left is a `HasOne`, pushing upward.
-        let node = self.consign.mk( Node(lbl, lft.clone(), rgt) ) ;
-        return self.consign.mk( HasOne(node) )
+        let node = self.consign.lock().unwrap().mk(
+          Node(lbl, lft.clone(), rgt)
+        ) ;
+        return self.consign.lock().unwrap().mk( HasOne(node) )
       } ;
-      self.consign.mk( Node(lbl, lft, rgt) )
+      self.consign.lock().unwrap().mk( Node(lbl, lft, rgt) )
     }
   }
 }
@@ -172,7 +180,7 @@ impl<Label: Ord + Eq + Hash + Clone> ZddMaker<
   Label, Zdd<Label>, Zdd<Label>
 > for Factory<Label> {
   fn mk_node(
-    & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
+    & self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
     let one = self.one() ;
     let lbl_zdd = self.change(one, lbl) ;
@@ -186,7 +194,7 @@ impl<'a, 'b, Label: Ord + Eq + Hash + Clone> ZddMaker<
   Label, & 'a Zdd<Label>, & 'b Zdd<Label>
 > for Factory<Label> {
   fn mk_node(
-    & mut self, lbl: Label, lft: & 'a Zdd<Label>, rgt: & 'b Zdd<Label>
+    & self, lbl: Label, lft: & 'a Zdd<Label>, rgt: & 'b Zdd<Label>
   ) -> Zdd<Label> {
     self.mk_node(lbl, lft.clone(), rgt.clone())
   }
@@ -196,7 +204,7 @@ impl<'a, Label: Ord + Eq + Hash + Clone> ZddMaker<
   Label, & 'a Zdd<Label>, Zdd<Label>
 > for Factory<Label> {
   fn mk_node(
-    & mut self, lbl: Label, lft: & 'a Zdd<Label>, rgt: Zdd<Label>
+    & self, lbl: Label, lft: & 'a Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
     self.mk_node(lbl.clone(), lft.clone(), rgt)
   }
@@ -206,7 +214,7 @@ impl<'a, Label: Ord + Eq + Hash + Clone> ZddMaker<
   Label, Zdd<Label>, & 'a Zdd<Label>
 > for Factory<Label> {
   fn mk_node(
-    & mut self, lbl: Label, lft: Zdd<Label>, rgt: & 'a Zdd<Label>
+    & self, lbl: Label, lft: Zdd<Label>, rgt: & 'a Zdd<Label>
   ) -> Zdd<Label> {
     self.mk_node(lbl.clone(), lft, rgt.clone())
   }
@@ -234,22 +242,22 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
     let zero = consign.mk(Zero) ;
     let one = consign.mk( HasOne(zero.clone()) ) ;
     Factory {
-      consign: consign,
+      consign: Mutex::new(consign),
 
       one: one,
       zero: zero,
 
-      count_cache: HashMap::new(),
+      count_cache: Mutex::new( HashMap::new() ),
 
-      offset_cache: HashMap::new(),
-      onset_cache: HashMap::new(),
-      change_cache: HashMap::new(),
+      offset_cache: Mutex::new( HashMap::new() ),
+      onset_cache: Mutex::new( HashMap::new() ),
+      change_cache: Mutex::new( HashMap::new() ),
 
-      union_cache: HashMap::new(),
-      inter_cache: HashMap::new(),
-      minus_cache: HashMap::new(),
+      union_cache: Mutex::new( HashMap::new() ),
+      inter_cache: Mutex::new( HashMap::new() ),
+      minus_cache: Mutex::new( HashMap::new() ),
 
-      subset_cache: HashMap::new(),
+      subset_cache: Mutex::new( HashMap::new() ),
     }
   }
 
@@ -264,17 +272,16 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
 
   /** Adds the empty combination to a ZDD if it's not already there. */
   #[inline(always)]
-  pub fn add_one(& mut self, kid: Zdd<Label>) -> Zdd<Label> {
-    if match * kid { HasOne(_) => true, _ => false, } {
-      kid
-    } else {
-      self.consign.mk(HasOne(kid))
+  pub fn add_one(& self, kid: & Zdd<Label>) -> Zdd<Label> {
+    match * * kid {
+      HasOne(_) => kid.clone(),
+      _ => self.consign.lock().unwrap().mk(HasOne(kid.clone())),
     }
   }
 
   /** Removes the empty combination from a ZDD if it's there. */
   #[inline(always)]
-  pub fn rm_one(& mut self, zdd: & Zdd<Label>) -> Zdd<Label> {
+  pub fn rm_one(& self, zdd: & Zdd<Label>) -> Zdd<Label> {
     match * * zdd {
       HasOne(ref kid) => kid.clone(),
       _ => zdd.clone(),
@@ -284,17 +291,13 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   /** Returns the left subtree if the ZDD is a node, an error
 
     * of `true` if the ZDD is `One` (more precisely `HasOne(Zero)`) and
-    * of `false` if it is `Zero`.
-     
-    Mutability on the factory is necessary because `lft(HasOne(Node(_,lft,_)))`
-    is `HasOne(lft)`, thus triggering node creation and hash consing table
-    lookup.*/
+    * of `false` if it is `Zero`. */
   #[inline(always)]
-  pub fn lft(& mut self, zdd: & Zdd<Label>) -> Result<Zdd<Label>,bool> {
+  pub fn lft(& self, zdd: & Zdd<Label>) -> Result<Zdd<Label>,bool> {
     match * * zdd {
       Node(_, ref lft, _) => Ok(lft.clone()),
       HasOne(ref kid) => match * * kid {
-        Node(_, ref lft, _) => Ok(self.add_one(lft.clone())),
+        Node(_, ref lft, _) => Ok(self.add_one(lft)),
         Zero => Err(true),
         _ => panic!("[lft] ZDD is ill-formed"),
       },
@@ -303,9 +306,7 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   }
 
   /** Returns the right subtree if the ZDD is a node, an error of `true` if the
-    ZDD is `One` and `false` if it is `Zero`.
-
-    Unlike `lft`, mutability on the factory is not necessary. */
+    ZDD is `One` and `false` if it is `Zero`. */
   #[inline(always)]
   pub fn rgt(& self, zdd: & Zdd<Label>) -> Result<Zdd<Label>,bool> {
     match * * zdd {
@@ -320,18 +321,16 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   }
 
   /** Returns the subtrees if the ZDD is a node, an error of `true` if the
-    ZDD is `One` and `false` if it is `Zero`.
-
-    Mutability on the factory is mandatory for the same reason as `lft`. */
+    ZDD is `One` and `false` if it is `Zero`. */
   #[inline(always)]
   pub fn kids(
-    & mut self, zdd: & Zdd<Label>
+    & self, zdd: & Zdd<Label>
   ) -> Result<(Zdd<Label>, Zdd<Label>),bool> {
     match * * zdd {
       Node(_, ref lft, ref rgt) => Ok((lft.clone(), rgt.clone())),
       HasOne(ref kid) => match * * kid {
         Node(_, ref lft, ref rgt) => Ok(
-          (self.add_one(lft.clone()), rgt.clone())
+          (self.add_one(lft), rgt.clone())
         ),
         Zero => Err(true),
         _ => panic!("[rgt] ZDD is ill-formed"),
@@ -343,7 +342,7 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   /** Creates a ZDD containing the combination corresponding to an iterator.
     **Assumes each elements appears only once.** */
   fn of_iterator<T: ::std::iter::Iterator<Item = & 'b Label>>(
-    & mut self, iter: T
+    & self, iter: T
   ) -> Zdd<Label> {
     let mut zdd = self.one() ;
     for e in iter {
@@ -354,23 +353,23 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
 
   /** Creates a ZDD containing the combination corresponding to a `BTreeSet`.
     */
-  pub fn of_btree_set(& mut self, set: & 'b BTreeSet<Label>) -> Zdd<Label> {
+  pub fn of_btree_set(& self, set: & 'b BTreeSet<Label>) -> Zdd<Label> {
     self.of_iterator(set.iter())
   }
 
   /** Creates a ZDD containing the combination corresponding to a `HashSet`. */
-  pub fn of_hashset(& mut self, set: & 'b HashSet<Label>) -> Zdd<Label> {
+  pub fn of_hashset(& self, set: & 'b HashSet<Label>) -> Zdd<Label> {
     self.of_iterator(set.iter())
   }
 
   /** Queries a unary cache. */
   #[inline(always)]
   fn unary_cache_get<Info: Eq + Hash + Clone, Out: Clone>(
-    cache: & HashMap<UnaryKey<Info>, Out>,
+    cache: & MutexGuard<HashMap<UnaryKey<Info>, Out>>,
     zdd: & Zdd<Label>,
     info: & Info
   ) -> Option<Out> {
-    match cache.get( & (zdd.hkey(), info.clone()) ) {
+    match (* cache).get( & (zdd.hkey(), info.clone()) ) {
       None => None, Some(out) => Some(out.clone()),
     }
   }
@@ -380,9 +379,9 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   fn count_cache_get(
     & self, zdd: & Zdd<Label>
   ) -> Option<usize> {
-    match self.count_cache.get( & zdd.hkey() ) {
-      None => None, Some(out) => Some(out.clone()),
-    }
+    Factory::unary_cache_get(
+      & self.count_cache.lock().unwrap(), zdd, & ()
+    )
   }
 
   /** Queries the offset cache. */
@@ -390,7 +389,9 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   fn offset_cache_get(
     & self, zdd: & Zdd<Label>, lbl: & Label
   ) -> Option<Zdd<Label>> {
-    Factory::unary_cache_get(& self.offset_cache, zdd, lbl)
+    Factory::unary_cache_get(
+      & self.offset_cache.lock().unwrap(), zdd, lbl
+    )
   }
 
   /** Queries the onset cache. */
@@ -398,7 +399,9 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   fn onset_cache_get(
     & self, zdd: & Zdd<Label>, lbl: & Label
   ) -> Option<Zdd<Label>> {
-    Factory::unary_cache_get(& self.onset_cache, zdd, lbl)
+    Factory::unary_cache_get(
+      & self.onset_cache.lock().unwrap(), zdd, lbl
+    )
   }
 
   /** Queries the change cache. */
@@ -406,17 +409,19 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   fn change_cache_get(
     & self, zdd: & Zdd<Label>, lbl: & Label
   ) -> Option<Zdd<Label>> {
-    Factory::unary_cache_get(& self.change_cache, zdd, lbl)
+    Factory::unary_cache_get(
+      & self.change_cache.lock().unwrap(), zdd, lbl
+    )
   }
 
   /** Queries a binary cache. */
   #[inline(always)]
   fn binary_cache_get<T: Clone>(
-    cache: & HashMap<BinaryKey, T>,
+    cache: & MutexGuard<HashMap<BinaryKey, T>>,
     lhs: & Zdd<Label>,
     rhs: & Zdd<Label>
   ) -> Option<T> {
-    match cache.get( & (lhs.hkey(), rhs.hkey()) ) {
+    match (* cache).get( & (lhs.hkey(), rhs.hkey()) ) {
       None => None, Some(zdd) => Some(zdd.clone()),
     }
   }
@@ -426,7 +431,9 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   fn union_cache_get(
     & self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
   ) -> Option<Zdd<Label>> {
-    Factory::binary_cache_get(& self.union_cache, lhs, rhs)
+    Factory::binary_cache_get(
+      & self.union_cache.lock().unwrap(), lhs, rhs
+    )
   }
 
   /** Queries the inter cache. */
@@ -434,7 +441,9 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   fn inter_cache_get(
     & self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
   ) -> Option<Zdd<Label>> {
-    Factory::binary_cache_get(& self.inter_cache, lhs, rhs)
+    Factory::binary_cache_get(
+      & self.inter_cache.lock().unwrap(), lhs, rhs
+    )
   }
 
   /** Queries the minus cache. */
@@ -442,7 +451,9 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   fn minus_cache_get(
     & self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
   ) -> Option<Zdd<Label>> {
-    Factory::binary_cache_get(& self.minus_cache, lhs, rhs)
+    Factory::binary_cache_get(
+      & self.minus_cache.lock().unwrap(), lhs, rhs
+    )
   }
 
   /** Queries the subset cache. */
@@ -450,46 +461,64 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
   fn subset_cache_get(
     & self, lhs: & Zdd<Label>, rhs: & Zdd<Label>
   ) -> Option<bool> {
-    Factory::binary_cache_get(& self.subset_cache, lhs, rhs)
+    Factory::binary_cache_get(
+      & self.subset_cache.lock().unwrap(), lhs, rhs
+    )
   }
 
   /** The size of the consign. */
   #[inline(always)]
-  pub fn consign_len(& self) -> usize { self.consign.len() }
+  pub fn consign_len(& self) -> usize { self.consign.lock().unwrap().len() }
 
   /** The size of the `count` cache. */
   #[inline(always)]
-  pub fn count_cache_len(& self) -> usize { self.count_cache.len() }
+  pub fn count_cache_len(& self) -> usize {
+    self.count_cache.lock().unwrap().len()
+  }
   /** The size of the `offset` cache. */
   #[inline(always)]
-  pub fn offset_cache_len(& self) -> usize { self.offset_cache.len() }
+  pub fn offset_cache_len(& self) -> usize {
+    self.offset_cache.lock().unwrap().len()
+  }
   /** The size of the `onset` cache. */
   #[inline(always)]
-  pub fn onset_cache_len(& self) -> usize { self.onset_cache.len() }
+  pub fn onset_cache_len(& self) -> usize {
+    self.onset_cache.lock().unwrap().len()
+  }
   /** The size of the `change` cache. */
   #[inline(always)]
-  pub fn change_cache_len(& self) -> usize { self.change_cache.len() }
+  pub fn change_cache_len(& self) -> usize {
+    self.change_cache.lock().unwrap().len()
+  }
 
   /** The size of the `union` cache. */
   #[inline(always)]
-  pub fn union_cache_len(& self) -> usize { self.union_cache.len() }
+  pub fn union_cache_len(& self) -> usize {
+    self.union_cache.lock().unwrap().len()
+  }
   /** The size of the `inter` cache. */
   #[inline(always)]
-  pub fn inter_cache_len(& self) -> usize { self.inter_cache.len() }
+  pub fn inter_cache_len(& self) -> usize {
+    self.inter_cache.lock().unwrap().len()
+  }
   /** The size of the `minus` cache. */
   #[inline(always)]
-  pub fn minus_cache_len(& self) -> usize { self.minus_cache.len() }
+  pub fn minus_cache_len(& self) -> usize {
+    self.minus_cache.lock().unwrap().len()
+  }
 
   /** The size of the `subset` cache. */
   #[inline(always)]
-  pub fn subset_cache_len(& self) -> usize { self.subset_cache.len() }
+  pub fn subset_cache_len(& self) -> usize {
+    self.subset_cache.lock().unwrap().len()
+  }
 }
 
 
 
 impl<Label: Ord + Eq + Hash + Clone> FactoryUnOps<Label, Zdd<Label>>
 for Factory<Label> {
-  fn count(& mut self, mut zdd: Zdd<Label>) -> usize {
+  fn count(& self, mut zdd: Zdd<Label>) -> usize {
     use zip::unary::Step::Lft ;
     let mut zip = zip::count() ;
     loop {
@@ -516,7 +545,7 @@ for Factory<Label> {
 impl<'a, Label: Ord + Eq + Hash + Clone> FactoryUnOps<
   Label, & 'a Zdd<Label>
 > for Factory<Label> {
-  fn count(& mut self, zdd: & 'a Zdd<Label>) -> usize {
+  fn count(& self, zdd: & 'a Zdd<Label>) -> usize {
     self.count(zdd.clone())
   }
 }
@@ -526,7 +555,7 @@ impl<Label: Ord + Eq + Hash + Clone> FactoryUnLblOps<Label, Zdd<Label>, Label>
 for Factory<Label> {
 
   fn offset(
-    & mut self, mut zdd: Zdd<Label>, lbl: Label
+    & self, mut zdd: Zdd<Label>, lbl: Label
   ) -> Zdd<Label> {
     use zip::unary::Step::Lft ;
     let mut zip = zip::offset() ;
@@ -562,7 +591,7 @@ for Factory<Label> {
   }
 
   fn onset(
-    & mut self, mut zdd: Zdd<Label>, lbl: Label
+    & self, mut zdd: Zdd<Label>, lbl: Label
   ) -> Zdd<Label> {
     use zip::unary::Step::Lft ;
     let mut zip = zip::onset() ;
@@ -597,7 +626,7 @@ for Factory<Label> {
   }
 
   fn change(
-    & mut self, mut zdd: Zdd<Label>, lbl: Label
+    & self, mut zdd: Zdd<Label>, lbl: Label
   ) -> Zdd<Label> {
     use zip::unary::Step::Lft ;
     let mut zip = zip::change() ;
@@ -647,13 +676,13 @@ for Factory<Label> {
 impl<'a, Label: Ord + Eq + Hash + Clone> FactoryUnLblOps<
   Label, Zdd<Label>, & 'a Label
 > for Factory<Label> {
-  fn offset(& mut self, zdd: Zdd<Label>, lbl: & 'a Label) -> Zdd<Label> {
+  fn offset(& self, zdd: Zdd<Label>, lbl: & 'a Label) -> Zdd<Label> {
     self.offset(zdd, lbl.clone())
   }
-  fn onset (& mut self, zdd: Zdd<Label>, lbl: & 'a Label) -> Zdd<Label> {
+  fn onset (& self, zdd: Zdd<Label>, lbl: & 'a Label) -> Zdd<Label> {
     self.onset(zdd, lbl.clone())
   }
-  fn change(& mut self, zdd: Zdd<Label>, lbl: & 'a Label) -> Zdd<Label> {
+  fn change(& self, zdd: Zdd<Label>, lbl: & 'a Label) -> Zdd<Label> {
     self.change(zdd, lbl.clone())
   }
 }
@@ -661,13 +690,13 @@ impl<'a, Label: Ord + Eq + Hash + Clone> FactoryUnLblOps<
 impl<'a, Label: Ord + Eq + Hash + Clone> FactoryUnLblOps<
   Label, & 'a Zdd<Label>, Label
 > for Factory<Label> {
-  fn offset(& mut self, zdd: & 'a Zdd<Label>, lbl: Label) -> Zdd<Label> {
+  fn offset(& self, zdd: & 'a Zdd<Label>, lbl: Label) -> Zdd<Label> {
     self.offset(zdd.clone(), lbl)
   }
-  fn onset (& mut self, zdd: & 'a Zdd<Label>, lbl: Label) -> Zdd<Label> {
+  fn onset (& self, zdd: & 'a Zdd<Label>, lbl: Label) -> Zdd<Label> {
     self.onset(zdd.clone(), lbl)
   }
-  fn change(& mut self, zdd: & 'a Zdd<Label>, lbl: Label) -> Zdd<Label> {
+  fn change(& self, zdd: & 'a Zdd<Label>, lbl: Label) -> Zdd<Label> {
     self.change(zdd.clone(), lbl)
   }
 }
@@ -675,13 +704,13 @@ impl<'a, Label: Ord + Eq + Hash + Clone> FactoryUnLblOps<
 impl<'a, 'b, Label: Ord + Eq + Hash + Clone> FactoryUnLblOps<
   Label, & 'a Zdd<Label>, & 'b Label
 > for Factory<Label> {
-  fn offset(& mut self, zdd: & 'a Zdd<Label>, lbl: & 'b Label) -> Zdd<Label> {
+  fn offset(& self, zdd: & 'a Zdd<Label>, lbl: & 'b Label) -> Zdd<Label> {
     self.offset(zdd.clone(), lbl.clone())
   }
-  fn onset (& mut self, zdd: & 'a Zdd<Label>, lbl: & 'b Label) -> Zdd<Label> {
+  fn onset (& self, zdd: & 'a Zdd<Label>, lbl: & 'b Label) -> Zdd<Label> {
     self.onset(zdd.clone(), lbl.clone())
   }
-  fn change(& mut self, zdd: & 'a Zdd<Label>, lbl: & 'b Label) -> Zdd<Label> {
+  fn change(& self, zdd: & 'a Zdd<Label>, lbl: & 'b Label) -> Zdd<Label> {
     self.change(zdd.clone(), lbl.clone())
   }
 }
@@ -694,7 +723,7 @@ impl<Label: Ord + Eq + Hash + Clone> FactoryBinOps<
 > for Factory<Label> {
 
   fn union(
-    & mut self, lhs: Zdd<Label>, rhs: Zdd<Label>
+    & self, lhs: Zdd<Label>, rhs: Zdd<Label>
   ) -> Zdd<Label> {
     use zip::binary::Step::{ Lft, TLft } ;
     let mut zip = zip::union() ;
@@ -714,11 +743,11 @@ impl<Label: Ord + Eq + Hash + Clone> FactoryBinOps<
 
           // One of them contains only the empty combination.
           (Err(true), _) => {
-            let zdd = self.add_one(rhs) ;
+            let zdd = self.add_one(& rhs) ;
             zip_up!(self >> zip > zdd)
           },
           (_, Err(true)) => {
-            let zdd = self.add_one(lhs) ;
+            let zdd = self.add_one(& lhs) ;
             zip_up!(self >> zip > zdd)
           },
 
@@ -764,7 +793,7 @@ impl<Label: Ord + Eq + Hash + Clone> FactoryBinOps<
   }
 
   fn inter(
-    & mut self, lhs: Zdd<Label>, rhs: Zdd<Label>
+    & self, lhs: Zdd<Label>, rhs: Zdd<Label>
   ) -> Zdd<Label> {
     use zip::binary::Step::Lft ;
     let mut zip = zip::inter() ;
@@ -820,7 +849,7 @@ impl<Label: Ord + Eq + Hash + Clone> FactoryBinOps<
   }
 
   fn minus(
-    & mut self, lhs: Zdd<Label>, rhs: Zdd<Label>
+    & self, lhs: Zdd<Label>, rhs: Zdd<Label>
   ) -> Zdd<Label> {
     use zip::binary::Step::{ Lft, TLft } ;
     let mut zip = zip::minus() ;
@@ -883,7 +912,7 @@ impl<Label: Ord + Eq + Hash + Clone> FactoryBinOps<
   }
 
   fn subset(
-    & mut self, lhs: Zdd<Label>, rhs: Zdd<Label>
+    & self, lhs: Zdd<Label>, rhs: Zdd<Label>
   ) -> bool {
     use zip::binary::Step::{ Lft, TLft } ;
     let mut zip = zip::subset() ;
@@ -937,16 +966,16 @@ impl<'a, Label: Ord + Eq + Hash + Clone> FactoryBinOps<
   Label, & 'a Zdd<Label>, Zdd<Label>
 > for Factory<Label> {
   fn union(
-    & mut self, lhs: & 'a Zdd<Label>, rhs: Zdd<Label>
+    & self, lhs: & 'a Zdd<Label>, rhs: Zdd<Label>
   ) -> Zdd<Label> { self.union(lhs.clone(), rhs) }
   fn inter(
-    & mut self, lhs: & 'a Zdd<Label>, rhs: Zdd<Label>
+    & self, lhs: & 'a Zdd<Label>, rhs: Zdd<Label>
   ) -> Zdd<Label> { self.inter(lhs.clone(), rhs) }
   fn minus(
-    & mut self, lhs: & 'a Zdd<Label>, rhs: Zdd<Label>
+    & self, lhs: & 'a Zdd<Label>, rhs: Zdd<Label>
   ) -> Zdd<Label> { self.minus(lhs.clone(), rhs) }
   fn subset(
-    & mut self, lhs: & 'a Zdd<Label>, rhs: Zdd<Label>
+    & self, lhs: & 'a Zdd<Label>, rhs: Zdd<Label>
   ) -> bool { self.subset(lhs.clone(), rhs) }
 }
 
@@ -955,16 +984,16 @@ impl<'a, Label: Ord + Eq + Hash + Clone> FactoryBinOps<
   Label, Zdd<Label>, & 'a Zdd<Label>
 > for Factory<Label> {
   fn union(
-    & mut self, lhs: Zdd<Label>, rhs: & 'a Zdd<Label>
+    & self, lhs: Zdd<Label>, rhs: & 'a Zdd<Label>
   ) -> Zdd<Label> { self.union(lhs, rhs.clone()) }
   fn inter(
-    & mut self, lhs: Zdd<Label>, rhs: & 'a Zdd<Label>
+    & self, lhs: Zdd<Label>, rhs: & 'a Zdd<Label>
   ) -> Zdd<Label> { self.inter(lhs, rhs.clone()) }
   fn minus(
-    & mut self, lhs: Zdd<Label>, rhs: & 'a Zdd<Label>
+    & self, lhs: Zdd<Label>, rhs: & 'a Zdd<Label>
   ) -> Zdd<Label> { self.minus(lhs, rhs.clone()) }
   fn subset(
-    & mut self, lhs: Zdd<Label>, rhs: & 'a Zdd<Label>
+    & self, lhs: Zdd<Label>, rhs: & 'a Zdd<Label>
   ) -> bool { self.subset(lhs, rhs.clone()) }
 }
 
@@ -973,16 +1002,16 @@ impl<'a, 'b, Label: Ord + Eq + Hash + Clone> FactoryBinOps<
   Label, & 'a Zdd<Label>, & 'b Zdd<Label>
 > for Factory<Label> {
   fn union(
-    & mut self, lhs: & 'a Zdd<Label>, rhs: & 'b Zdd<Label>
+    & self, lhs: & 'a Zdd<Label>, rhs: & 'b Zdd<Label>
   ) -> Zdd<Label> { self.union(lhs.clone(), rhs.clone()) }
   fn inter(
-    & mut self, lhs: & 'a Zdd<Label>, rhs: & 'b Zdd<Label>
+    & self, lhs: & 'a Zdd<Label>, rhs: & 'b Zdd<Label>
   ) -> Zdd<Label> { self.inter(lhs.clone(), rhs.clone()) }
   fn minus(
-    & mut self, lhs: & 'a Zdd<Label>, rhs: & 'b Zdd<Label>
+    & self, lhs: & 'a Zdd<Label>, rhs: & 'b Zdd<Label>
   ) -> Zdd<Label> { self.minus(lhs.clone(), rhs.clone()) }
   fn subset(
-    & mut self, lhs: & 'a Zdd<Label>, rhs: & 'b Zdd<Label>
+    & self, lhs: & 'a Zdd<Label>, rhs: & 'b Zdd<Label>
   ) -> bool { self.subset(lhs.clone(), rhs.clone()) }
 }
 
@@ -1004,11 +1033,11 @@ fn cache_overwrite<T>(_: Option<T>, _: & str) { () }
 impl<Label: Ord + Eq + Hash + Clone> zip::unary::Zip<
   HKey, Label, (), usize, zip::Count<Label>
 > for Factory<Label> {
-  fn cache_insert(& mut self, key: HKey, count: & usize) {
-    let _res = self.count_cache.insert(key, * count) ;
+  fn cache_insert(& self, key: HKey, count: & usize) {
+    let _res = self.count_cache.lock().unwrap().insert((key, ()), * count) ;
     cache_overwrite(_res, "count")
   }
-  fn combine(& mut self, _: (), l_count: usize, r_count: usize) -> usize {
+  fn combine(& self, _: (), l_count: usize, r_count: usize) -> usize {
     l_count + r_count
   }
 }
@@ -1017,12 +1046,12 @@ impl<Label: Ord + Eq + Hash + Clone> zip::unary::Zip<
 impl<Label: Ord + Eq + Hash + Clone> zip::unary::Zip<
   (HKey, Label), Label, Label, Zdd<Label>, zip::Offset<Label>
 > for Factory<Label> {
-  fn cache_insert(& mut self, key: (HKey, Label), zdd: & Zdd<Label>) {
-    let _res = self.offset_cache.insert(key, zdd.clone()) ;
+  fn cache_insert(& self, key: (HKey, Label), zdd: & Zdd<Label>) {
+    let _res = self.offset_cache.lock().unwrap().insert(key, zdd.clone()) ;
     cache_overwrite(_res, "offset")
   }
   fn combine(
-    & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
+    & self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
     self.node(lbl, lft, rgt)
   }
@@ -1032,12 +1061,12 @@ impl<Label: Ord + Eq + Hash + Clone> zip::unary::Zip<
 impl<Label: Ord + Eq + Hash + Clone> zip::unary::Zip<
   (HKey, Label), Label, Label, Zdd<Label>, zip::Onset<Label>
 > for Factory<Label> {
-  fn cache_insert(& mut self, key: (HKey, Label), zdd: & Zdd<Label>) {
-    let _res = self.onset_cache.insert(key, zdd.clone()) ;
+  fn cache_insert(& self, key: (HKey, Label), zdd: & Zdd<Label>) {
+    let _res = self.onset_cache.lock().unwrap().insert(key, zdd.clone()) ;
     cache_overwrite(_res, "onset")
   }
   fn combine(
-    & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
+    & self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
     self.node(lbl, lft, rgt)
   }
@@ -1047,12 +1076,12 @@ impl<Label: Ord + Eq + Hash + Clone> zip::unary::Zip<
 impl<Label: Ord + Eq + Hash + Clone> zip::unary::Zip<
   (HKey, Label), Label, Label, Zdd<Label>, zip::Change<Label>
 > for Factory<Label> {
-  fn cache_insert(& mut self, key: (HKey, Label), zdd: & Zdd<Label>) {
-    let _res = self.change_cache.insert(key, zdd.clone()) ;
+  fn cache_insert(& self, key: (HKey, Label), zdd: & Zdd<Label>) {
+    let _res = self.change_cache.lock().unwrap().insert(key, zdd.clone()) ;
     cache_overwrite(_res, "change")
   }
   fn combine(
-    & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
+    & self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
     self.node(lbl, lft, rgt)
   }
@@ -1062,12 +1091,12 @@ impl<Label: Ord + Eq + Hash + Clone> zip::unary::Zip<
 impl<Label: Ord + Eq + Hash + Clone> zip::binary::Zip<
   (HKey, HKey), Label, Label, Zdd<Label>, zip::Union<Label>
 > for Factory<Label> {
-  fn cache_insert(& mut self, key: (HKey, HKey), zdd: & Zdd<Label>) {
-    let _res = self.union_cache.insert(key, zdd.clone()) ;
+  fn cache_insert(& self, key: (HKey, HKey), zdd: & Zdd<Label>) {
+    let _res = self.union_cache.lock().unwrap().insert(key, zdd.clone()) ;
     cache_overwrite(_res, "union")
   }
   fn combine(
-    & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
+    & self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
     self.node(lbl, lft, rgt)
   }
@@ -1077,12 +1106,12 @@ impl<Label: Ord + Eq + Hash + Clone> zip::binary::Zip<
 impl<Label: Ord + Eq + Hash + Clone> zip::binary::Zip<
   (HKey, HKey), Label, Label, Zdd<Label>, zip::Inter<Label>
 > for Factory<Label> {
-  fn cache_insert(& mut self, key: (HKey, HKey), zdd: & Zdd<Label>) {
-    let _res = self.inter_cache.insert(key, zdd.clone()) ;
+  fn cache_insert(& self, key: (HKey, HKey), zdd: & Zdd<Label>) {
+    let _res = self.inter_cache.lock().unwrap().insert(key, zdd.clone()) ;
     cache_overwrite(_res, "inter")
   }
   fn combine(
-    & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
+    & self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
     self.node(lbl, lft, rgt)
   }
@@ -1092,12 +1121,12 @@ impl<Label: Ord + Eq + Hash + Clone> zip::binary::Zip<
 impl<Label: Ord + Eq + Hash + Clone> zip::binary::Zip<
   (HKey, HKey), Label, Label, Zdd<Label>, zip::Minus<Label>
 > for Factory<Label> {
-  fn cache_insert(& mut self, key: (HKey, HKey), zdd: & Zdd<Label>) {
-    let _res = self.minus_cache.insert(key, zdd.clone()) ;
+  fn cache_insert(& self, key: (HKey, HKey), zdd: & Zdd<Label>) {
+    let _res = self.minus_cache.lock().unwrap().insert(key, zdd.clone()) ;
     cache_overwrite(_res, "minus")
   }
   fn combine(
-    & mut self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
+    & self, lbl: Label, lft: Zdd<Label>, rgt: Zdd<Label>
   ) -> Zdd<Label> {
     self.node(lbl, lft, rgt)
   }
@@ -1107,11 +1136,11 @@ impl<Label: Ord + Eq + Hash + Clone> zip::binary::Zip<
 impl<Label: Ord + Eq + Hash + Clone> zip::binary::Zip<
   (HKey, HKey), Label, (), bool, zip::Subset<Label>
 > for Factory<Label> {
-  fn cache_insert(& mut self, key: (HKey, HKey), val: & bool) {
-    let _res = self.subset_cache.insert(key, * val) ;
+  fn cache_insert(& self, key: (HKey, HKey), val: & bool) {
+    let _res = self.subset_cache.lock().unwrap().insert(key, * val) ;
     cache_overwrite(_res, "subset")
   }
-  fn combine(& mut self, _: (), lft: bool, rgt: bool) -> bool {
+  fn combine(& self, _: (), lft: bool, rgt: bool) -> bool {
     lft && rgt
   }
 }
@@ -1169,22 +1198,22 @@ impl FactoryBuilder {
     let zero = consign.mk(Zero) ;
     let one = consign.mk( HasOne(zero.clone()) ) ;
     Factory {
-      consign: consign,
+      consign: Mutex::new(consign),
 
       one: one,
       zero: zero,
 
-      count_cache: HashMap::with_capacity(self.count),
+      count_cache: Mutex::new( HashMap::with_capacity(self.count) ),
 
-      offset_cache: HashMap::with_capacity(self.offset),
-      onset_cache: HashMap::with_capacity(self.onset),
-      change_cache: HashMap::with_capacity(self.change),
+      offset_cache: Mutex::new( HashMap::with_capacity(self.offset) ),
+      onset_cache: Mutex::new( HashMap::with_capacity(self.onset) ),
+      change_cache: Mutex::new( HashMap::with_capacity(self.change) ),
 
-      union_cache: HashMap::with_capacity(self.union),
-      inter_cache: HashMap::with_capacity(self.inter),
-      minus_cache: HashMap::with_capacity(self.minus),
+      union_cache: Mutex::new( HashMap::with_capacity(self.union) ),
+      inter_cache: Mutex::new( HashMap::with_capacity(self.inter) ),
+      minus_cache: Mutex::new( HashMap::with_capacity(self.minus) ),
 
-      subset_cache: HashMap::with_capacity(self.subset),
+      subset_cache: Mutex::new( HashMap::with_capacity(self.subset) ),
     }
   }
 

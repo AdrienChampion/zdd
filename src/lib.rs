@@ -1,3 +1,12 @@
+// Copyright 2015 Adrien Champion. See the COPYRIGHT file at the top-level
+// directory of this distribution.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
 /*!
 A ZDD library, based on [this paper by Shin-Ichi Minato][zdd paper].
 
@@ -5,7 +14,8 @@ ZDDs are hash consed so equality is constant time. All operations provided by
 `Factory` are cached. ZDDs are `Arc` of hash consed `ZddTree` so they can be
 safely sent to other threads.
 
-[zdd paper]: http://link.springer.com/article/10.1007%2Fs100090100038 (Zero-suppressed BDDs and their applications) */
+[zdd paper]: http://link.springer.com/article/10.1007%2Fs100090100038 (Zero-suppressed BDDs and their applications)
+*/
 
 #[macro_use]
 extern crate hashconsing ;
@@ -30,21 +40,22 @@ pub use factory::{
   FactoryUnOps, FactoryUnLblOps, FactoryBinOps
 } ;
 
-pub mod embedded ;
+pub mod wrapped ;
 
 /** A hash consed ZDD. */
 pub type Zdd<Label> = HConsed<ZddTree<Label>> ;
 
 /** Actual ZDD enum type.
 
-  Usually a ZDD is either:
+Usually a ZDD is either:
 
-  * a **node** with a label and a left and a right hash consed subtree,
-  * the **one** terminal, the set containing only the null combination,
-  * the **zero** terminal, the empty set.
+* a **node** with a label and a left and a right hash consed subtree,
+* the **one** terminal, the set containing only the null combination,
+* the **zero** terminal, the empty set.
 
-  However we use *0-element edges* that indicate a path contains the null
-  combination. So there's no **one** terminal.*/
+However we use *0-element edges* that indicate a path contains the null
+combination. So there's no **one** terminal.
+*/
 #[derive(PartialEq, Hash)]
 pub enum ZddTree<Label> {
   /// A node with a label and two kids.

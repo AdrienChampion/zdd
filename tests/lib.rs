@@ -1,3 +1,12 @@
+// Copyright 2015 Adrien Champion. See the COPYRIGHT file at the top-level
+// directory of this distribution.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
 extern crate zdd ;
 extern crate rand ;
 
@@ -14,7 +23,7 @@ use rand::{ StdRng, Rand, random, Closed01 } ;
 type Lbl = u8 ;
 type Set = BTreeSet<Lbl> ;
 type SSet = BTreeSet<Set> ;
-type Zdd = zdd::embedded::Zdd<Lbl> ;
+type Zdd = zdd::wrapped::Zdd<Lbl> ;
 type Factory = zdd::Factory<Lbl> ;
 type FBuilder = zdd::FactoryBuilder ;
 
@@ -284,7 +293,7 @@ fn minus(
 }
 
 fn run(
-  factory: & zdd::embedded::Factory<Lbl>, u_bound: usize, max: usize
+  factory: & zdd::wrapped::Factory<Lbl>, u_bound: usize, max: usize
 ) -> usize {
   let mut max = max ;
   let mut rng = StdRng::new().unwrap() ;

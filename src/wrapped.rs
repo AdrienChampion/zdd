@@ -25,7 +25,7 @@ pub type Factory<Label> = Arc<::factory::Factory<Label>> ;
 
   It is equipped with the following operators:
 
-| Monadic operators |                    |    Dyadic operators  |      |
+| Unary operators |                      |    Binary operators  |      |
 |:-----------:|:------------------------:|:------------:|:------------:|
 | <code>zdd &#124; elem</code> | offset of `elm` in `zdd` | `lhs + rhs`  | union        |
 | `zdd % elm` | onset of `elm` in `zdd`  | `lhs - rhs`  | difference   |

@@ -1,10 +1,20 @@
+// Copyright 2015 Adrien Champion. See the COPYRIGHT file at the top-level
+// directory of this distribution.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
 /*! ZDD factory.
 
 Everything is hashconsed, so in the end all operations are performed through a
 factory. It contains the hash cons table and the cash for the most common
 operations.
 
-One should **never** create more than one factory for a given element type. */
+One should **never** create more than one factory for a given element type.
+*/
 
 use std::collections::{ HashMap, BTreeSet, HashSet } ;
 use std::sync::{ Mutex, MutexGuard } ;

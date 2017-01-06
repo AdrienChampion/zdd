@@ -1,6 +1,6 @@
 # `zdd`
 
-[![Build Status](https://travis-ci.org/AdrienChampion/zdd.svg?branch=master)](https://travis-ci.org/AdrienChampion/zdd) [![Latest Version](https://img.shields.io/crates/v/hashconsing.svg)](https://crates.io/crates/hashconsing)
+[![Build Status](https://travis-ci.org/AdrienChampion/zdd.svg?branch=master)](https://travis-ci.org/AdrienChampion/zdd) [![Latest Version](https://img.shields.io/crates/v/zdd.svg)](https://crates.io/crates/zdd)
 
 `zdd` is a Zero-suppressed binary Decision Diagram library in Rust.
 

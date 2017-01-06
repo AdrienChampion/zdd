@@ -6,7 +6,7 @@
 based on [Zero-suppressed BDDs and their applications][zdd paper] by Shin-Ichi
 Minato.
 
-For more details see [the documentation](doc).
+For more details see [the documentation][doc].
 
 [zdd paper]: http://link.springer.com/article/10.1007%2Fs100090100038 (Zero-suppressed BDDs and their applications)
 [doc]: https://docs.rs/zdd (zdd documentation)

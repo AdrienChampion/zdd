@@ -1,5 +1,4 @@
-// Copyright 2015 Adrien Champion. See the COPYRIGHT file at the top-level
-// directory of this distribution.
+// See the LICENSE files at the top-level directory of this distribution.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -11,6 +10,7 @@
 
 use std::fmt ;
 use std::io ;
+use std::hash::Hash ;
 
 use ::{ Zdd, ZddTreeOps } ;
 use ::ZddTree::* ;
@@ -24,7 +24,7 @@ pub trait ZddPrint<Label> {
 }
 
 /// Prints a ZDD as a graphviz graph to a `Write`.
-fn graph_print<Label: fmt::Display + Ord>(
+fn graph_print<Label: Hash + Clone + fmt::Display + Ord>(
   wrt: & mut io::Write,
   zdd: & Zdd<Label>,
   root: & 'static str,
@@ -49,7 +49,7 @@ fn graph_print<Label: fmt::Display + Ord>(
           (parent, edge_lbl, true, kid.clone())
         ),
         & Node(ref lbl, ref left, ref right) => {
-          let name = zdd.hkey().to_string() ;
+          let name = zdd.uid().to_string() ;
           try!(write!(wrt, "  {} [label=\"{}\"] ; \n", name, lbl)) ;
           try!(
             write!(
@@ -74,7 +74,7 @@ fn graph_print<Label: fmt::Display + Ord>(
   }
 }
 
-impl<Label: fmt::Display + Ord + Clone> ZddPrint<Label> for Zdd<Label> {
+impl<Label: fmt::Display + Ord + Clone + Hash> ZddPrint<Label> for Zdd<Label> {
 
   fn print(& self, pref: String) {
     println!("{}{{", pref) ;

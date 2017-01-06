@@ -1,5 +1,4 @@
-// Copyright 2015 Adrien Champion. See the COPYRIGHT file at the top-level
-// directory of this distribution.
+// See the LICENSE files at the top-level directory of this distribution.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -47,7 +46,7 @@ pub enum Res<D, NY> {
 }
 
 /** A zipper, a sequence of steps from `unary::Step` or `binary::Step`. */
-trait Zipper<Data> {
+pub trait Zipper<Data> {
   #[inline(always)]
   fn push(& mut self, Data) ;
   #[inline(always)]
@@ -57,23 +56,23 @@ trait Zipper<Data> {
 /** Creates a dedicated zipper, used for the basic (cached) operations. */
 macro_rules! mk_zip {
   ($arity:ident
-    $id:ident< $($t_param:ident),+ > of (
+    $id:ident($($t_params:tt)+)<$($tys:ty),+> of (
       $key:ty, $lbl:ty, $info:ty, $data:ty
     ) by $fun:ident
   ) => (
-    pub struct $id<$($t_param),+> {
+    pub struct $id<$($t_params)+> {
       zip: Vec<$arity::Step<$key, $lbl, $info, $data>>,
     }
-    pub fn $fun<$($t_param),+>() -> $id<$($t_param),+> { $id { zip: vec![] } }
-    impl<$($t_param),+> $id<$($t_param),+> {
+    pub fn $fun<$($t_params)+>() -> $id<$($tys),+> { $id { zip: vec![] } }
+    impl<$($t_params)+> $id<$($tys),+> {
       #[inline(always)]
       pub fn push(& mut self, step: $arity::Step<$key, $lbl, $info, $data>) {
         self.zip.push(step)
       }
     }
-    impl<$($t_param),+> Zipper<
+    impl<$($t_params)+> Zipper<
       $arity::Step<$key, $lbl, $info, $data>
-    > for $id<$($t_param),+> {
+    > for $id<$($tys),+> {
       #[inline(always)]
       fn push(& mut self, step: $arity::Step<$key, $lbl, $info, $data>) {
         self.zip.push(step)
@@ -88,44 +87,52 @@ macro_rules! mk_zip {
 
 /** Zipper for `count`. */
 mk_zip!{
-  unary Count<Label> of (HKey, Label, (), usize) by count
+  unary Count(Label: Clone)<Label> of (HKey, Label, (), usize) by count
 }
 
 /** Zipper for `offset`. */
 mk_zip!{
-  unary Offset<Label> of (
+  unary Offset(Label: Clone)<Label> of (
     (HKey,Label), Label, Label, Zdd<Label>
   ) by offset
 }
 /** Zipper for `onset`. */
 mk_zip!{
-  unary Onset<Label> of (
+  unary Onset(Label: Clone)<Label> of (
     (HKey,Label), Label, Label, Zdd<Label>
   ) by onset
 }
 /** Zipper for `change`. */
 mk_zip!{
-  unary Change<Label> of (
+  unary Change(Label: Clone)<Label> of (
     (HKey,Label), Label, Label, Zdd<Label>
   ) by change
 }
 
 /** Zipper for `union`. */
 mk_zip!{
-  binary Union<Label> of ((HKey, HKey), Label, Label, Zdd<Label>) by union
+  binary Union(Label: Clone)<Label> of (
+    (HKey, HKey), Label, Label, Zdd<Label>
+  ) by union
 }
 /** Zipper for `inter`. */
 mk_zip!{
-  binary Inter<Label> of ((HKey, HKey), Label, Label, Zdd<Label>) by inter
+  binary Inter(Label: Clone)<Label> of (
+    (HKey, HKey), Label, Label, Zdd<Label>
+  ) by inter
 }
 /** Zipper for `minus`. */
 mk_zip!{
-  binary Minus<Label> of ((HKey, HKey), Label, Label, Zdd<Label>) by minus
+  binary Minus(Label: Clone)<Label> of (
+    (HKey, HKey), Label, Label, Zdd<Label>
+  ) by minus
 }
 
 /** Zipper for `subset`. */
 mk_zip!{
-  binary Subset<Label> of ((HKey, HKey), Label, (), bool) by subset
+  binary Subset(Label: Clone)<Label> of (
+    (HKey, HKey), Label, (), bool
+  ) by subset
 }
 
 /** Zips up a `Zipper` through a factory implementing `unary::Zip` or
@@ -198,14 +205,14 @@ pub mod unary {
     * `Label` is for the elements stored in the ZDD;
     * `Info` is for the information we want available to construct the result;
     * `Data` is for what will be returned eventually. */
-  pub enum Step<Key, Label, Info, Data> {
+  pub enum Step<Key, Label: Clone, Info, Data> {
     Lft(Key, Info, Zdd<Label>),
     Rgt(Key, Info, Data),
   }
 
   /** Can zip up a unary zipper. */
   pub trait Zip<
-    Key, Label, Info, Data,
+    Key, Label: Clone, Info, Data,
     Zip: super::Zipper<Step<Key, Label, Info, Data>>
   > {
     /** Insert into the cache corresponding to `Zip`. */
@@ -260,7 +267,7 @@ pub mod binary {
     * `Label` is for the elements stored in the ZDD ;
     * `Info` is for the information we want available to construct the result;
     * `Data` is for what will be returned eventually. */
-  pub enum Step<Key, Label, Info, Data> {
+  pub enum Step<Key, Label: Clone, Info, Data> {
     Lft(Key, Info, Zdd<Label>, Zdd<Label>),
     TLft(Key, Info, Data),
     Rgt(Key, Info, Data),
@@ -268,7 +275,7 @@ pub mod binary {
 
   /** Can zip up a binary zipper. */
   pub trait Zip<
-    Key, Label, Info, Data,
+    Key, Label: Clone, Info, Data,
     Zip: super::Zipper<Step<Key, Label, Info, Data>>
   > {
     /** Insert into the cache corresponding to `Zip`. */

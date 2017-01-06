@@ -1,19 +1,24 @@
 [package]
 name = "zdd"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Adrien Champion <adrien.champion@email.com>"]
 description = "A Zero-suppressed BDD library."
-documentation = "http://adrienchampion.bitbucket.org/zdd/zdd/"
-homepage = "https://bitbucket.org/AdrienChampion/zdd/"
-repository = "https://bitbucket.org/AdrienChampion/zdd/src"
+documentation = "https://docs.rs/zdd"
+homepage = "https://github.com/AdrienChampion/zdd"
+repository = "https://github.com/AdrienChampion/zdd"
 readme = "README.md"
 keywords = ["ZDD", "BDD"]
 license = "MIT/Apache-2.0"
 
-[[bin]]
-name = "zdd_bin"
-doc = false
+[profile.test]
+opt-level = 3
+debug = true
+rpath = false
+lto = false
+debug-assertions = true
+codegen-units = 1
+panic = 'unwind'
 
 [dependencies]
-rand = "0.3.11"
-hashconsing = "0.3.0"
+rand = "^0"
+hashconsing = "^0"

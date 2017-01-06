@@ -1,5 +1,4 @@
-// Copyright 2015 Adrien Champion. See the COPYRIGHT file at the top-level
-// directory of this distribution.
+// See the LICENSE files at the top-level directory of this distribution.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -65,14 +64,14 @@ pub trait FactoryBinOps<Label: Ord + Eq + Hash + Clone, LHS, RHS> {
 
 /** Internal ZDD factory trait, creates a node without checking the consistency
   of the label. */
-trait ZddFactory<Label: Eq + Hash> {
+trait ZddFactory<Label: Eq + Hash + Clone> {
   /** Creates a node following the ZDD rules, but without checking that the
     label is actually consistent with the kids. */
   fn node(& self, Label, Zdd<Label>, Zdd<Label>) -> Zdd<Label> ;
 }
 
 /** Provides safe node creation. */
-pub trait ZddMaker<Label: Eq + Hash, Lft, Rgt> {
+pub trait ZddMaker<Label: Eq + Hash + Clone, Lft, Rgt> {
   /** The precise semantics of this function is as follows:
 
     ```
@@ -131,7 +130,7 @@ pub trait ZddMaker<Label: Eq + Hash, Lft, Rgt> {
 
   Wraps a hash consing table. Functions `count`, `offset`, `onset`, `change`,
   `union`, `inter`, `minus` and `subset` are cached. */
-pub struct Factory<Label: Eq + Hash> {
+pub struct Factory<Label: Eq + Hash + Clone> {
   /** The hash table for ZDDs. */
   consign: Mutex< HashConsign<ZddTree<Label>> >,
 
@@ -161,7 +160,7 @@ pub struct Factory<Label: Eq + Hash> {
   subset_cache: Mutex< HashMap<BinaryKey, bool> >,
 }
 
-unsafe impl<Label: Eq + Hash> Sync for Factory<Label> {}
+unsafe impl<Label: Eq + Hash + Clone> Sync for Factory<Label> {}
 
 
 impl<Label: Ord + Eq + Hash + Clone> ZddFactory<Label> for Factory<Label> {
@@ -375,7 +374,7 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
     zdd: & Zdd<Label>,
     info: & Info
   ) -> Option<Out> {
-    match (* cache).get( & (zdd.hkey(), info.clone()) ) {
+    match (* cache).get( & (zdd.uid(), info.clone()) ) {
       None => None, Some(out) => Some(out.clone()),
     }
   }
@@ -427,7 +426,7 @@ FactoryBinOps<Label, & 'a Zdd<Label>, & 'b Zdd<Label>> {
     lhs: & Zdd<Label>,
     rhs: & Zdd<Label>
   ) -> Option<T> {
-    match (* cache).get( & (lhs.hkey(), rhs.hkey()) ) {
+    match (* cache).get( & (lhs.uid(), rhs.uid()) ) {
       None => None, Some(zdd) => Some(zdd.clone()),
     }
   }
@@ -537,7 +536,7 @@ for Factory<Label> {
         _ => match self.count_cache_get(& zdd) {
           Some(count) => zip_up!(self > zip > count),
           None => {
-            let key = zdd.hkey() ;
+            let key = zdd.uid() ;
             let (lft, rgt) = self.kids(& zdd).unwrap() ;
             zip.push( Lft(key, (), rgt) ) ;
             lft
@@ -586,7 +585,7 @@ for Factory<Label> {
           Some(res) => zip_up!(self > zip > res),
           // Not found.
           None => {
-            let key = (zdd.hkey(), lbl.clone()) ;
+            let key = (zdd.uid(), lbl.clone()) ;
             let (lft,rgt) = self.kids(& zdd).unwrap() ;
             zip.push( Lft(key, top.clone(), rgt) ) ;
             lft
@@ -621,7 +620,7 @@ for Factory<Label> {
           Some(res) => zip_up!(self > zip > res),
           // Not found.
           None => {
-            let key = (zdd.hkey(), lbl.clone()) ;
+            let key = (zdd.uid(), lbl.clone()) ;
             let (lft,rgt) = self.kids(& zdd).unwrap() ;
             zip.push( Lft(key, top.clone(), rgt) ) ;
             lft
@@ -668,7 +667,7 @@ for Factory<Label> {
           Some(res) => zip_up!(self > zip > res),
           // Not found.
           None => {
-            let key = (zdd.hkey(), lbl.clone()) ;
+            let key = (zdd.uid(), lbl.clone()) ;
             let (lft, rgt) = self.kids(& zdd).unwrap() ;
             zip.push( Lft(key, top.clone(), rgt) ) ;
             lft
@@ -772,7 +771,7 @@ impl<Label: Ord + Eq + Hash + Clone> FactoryBinOps<
               Some(res) => zip_up!(self >> zip > res),
               // Not found.
               None => {
-                let key = (lhs.hkey(), rhs.hkey()) ;
+                let key = (lhs.uid(), rhs.uid()) ;
 
                 if l_top == r_top {
                   // Extracting kids.
@@ -833,7 +832,7 @@ impl<Label: Ord + Eq + Hash + Clone> FactoryBinOps<
               Some(res) => zip_up!(self >> zip > res),
               // Not found.
               None => {
-                let key = (lhs.hkey(), rhs.hkey()) ;
+                let key = (lhs.uid(), rhs.uid()) ;
                 // Extracting kids.
                 let (l_lft,l_rgt) = self.kids(& lhs).unwrap() ;
                 let (r_lft,r_rgt) = self.kids(& rhs).unwrap() ;
@@ -888,7 +887,7 @@ impl<Label: Ord + Eq + Hash + Clone> FactoryBinOps<
             Some(res) => zip_up!(self >> zip > res),
             // Not found.
             None => {
-              let key = (lhs.hkey(), rhs.hkey()) ;
+              let key = (lhs.uid(), rhs.uid()) ;
               if l_top < r_top {
                 // lhs is above.
                 let (l_lft,l_rgt) = self.kids(& lhs).unwrap() ;
@@ -942,7 +941,7 @@ impl<Label: Ord + Eq + Hash + Clone> FactoryBinOps<
             Some(res) => zip_up!(self >> zip > res),
             // Not found.
             None => {
-              let key = (lhs.hkey(), rhs.hkey()) ;
+              let key = (lhs.uid(), rhs.uid()) ;
               if l_top == r_top {
                 let (l_lft,l_rgt) = self.kids(& lhs).unwrap() ;
                 let (r_lft,r_rgt) = self.kids(& rhs).unwrap() ;
@@ -1199,8 +1198,8 @@ pub struct FactoryBuilder {
 
 impl FactoryBuilder {
   /** Builds a factory with the corresponding capacities. */
-  pub fn build<Label: Eq + Hash>(self) -> Factory<Label> {
-    let mut consign = HashConsign::empty_with_capacity(self.consign) ;
+  pub fn build<Label: Eq + Hash + Clone>(self) -> Factory<Label> {
+    let mut consign = HashConsign::with_capacity(self.consign) ;
     let zero = consign.mk(Zero) ;
     let one = consign.mk( HasOne(zero.clone()) ) ;
     Factory {
@@ -1224,7 +1223,7 @@ impl FactoryBuilder {
   }
 
   /** Builds an Arc of a factory with the corresponding capacities. */
-  pub fn build_arc<Label: Eq + Hash>(self) -> Arc<Factory<Label>> {
+  pub fn build_arc<Label: Eq + Hash + Clone>(self) -> Arc<Factory<Label>> {
     Arc::new( self.build() )
   }
 

@@ -1,5 +1,4 @@
-// Copyright 2015 Adrien Champion. See the COPYRIGHT file at the top-level
-// directory of this distribution.
+// See the LICENSE files at the top-level directory of this distribution.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -100,8 +99,8 @@ Usually a ZDD is either:
 However we use *0-element edges* that indicate a path contains the null
 combination. So there's no **one** terminal.
 */
-#[derive(PartialEq, Hash)]
-pub enum ZddTree<Label> {
+#[derive(Clone, PartialEq, Hash)]
+pub enum ZddTree<Label: Clone> {
   /// A node with a label and two kids.
   Node(Label, Zdd<Label>, Zdd<Label>),
   /// Indicates the underlying contains the empty combination.
@@ -161,7 +160,7 @@ impl<Label: Ord + Clone + fmt::Display> fmt::Display for ZddTree<Label> {
 
 // |===| Implementations necessary for hash consing.
 
-impl<Label: Eq> Eq for ZddTree<Label> {}
+impl<Label: Clone + Eq> Eq for ZddTree<Label> {}
 
 
 
@@ -255,7 +254,7 @@ impl<Label: Ord + Clone> ZddTreeOps<Label> for Zdd<Label> {
 
 
 /** An iterator over the combinations of a ZDD. */
-pub struct Iterator<Label> {
+pub struct Iterator<Label: Clone> {
   /** A stack of `(prefix, zdd)` where `prefix` are the elements in the
     combination `zdd` is the suffix of. */
   stack: Vec<(Vec<Label>, Zdd<Label>)>,

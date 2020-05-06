@@ -1,12 +1,13 @@
 [package]
 name = "zdd"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Adrien Champion <adrien.champion@email.com>"]
 description = "A Zero-suppressed BDD library."
 documentation = "https://docs.rs/zdd"
 homepage = "https://github.com/AdrienChampion/zdd"
 repository = "https://github.com/AdrienChampion/zdd"
-readme = "README.md"
+readme = "readme.md"
+categories = [ "compression", "data-structures", "science" ]
 keywords = ["ZDD", "BDD", "diagram"]
 license = "MIT/Apache-2.0"
 edition = "2018"
